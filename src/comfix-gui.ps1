@@ -31,7 +31,13 @@ if (-not (CF-IsAdmin)) {
         try {
             $a = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -Elevated'
             if ($Lang -ne '') { $a += ' -Lang ' + $Lang }
-            Start-Process -FilePath 'powershell.exe' -ArgumentList $a -Verb RunAs | Out-Null
+            # 提权后的新进程也别再弹一个黑框；万一系统不接受这个组合，就退回普通启动
+            # （界面自己的 Hide-ConsoleWindow 仍会把窗口藏起来）。
+            try {
+                Start-Process -FilePath 'powershell.exe' -ArgumentList $a -Verb RunAs -WindowStyle Hidden -ErrorAction Stop | Out-Null
+            } catch {
+                Start-Process -FilePath 'powershell.exe' -ArgumentList $a -Verb RunAs | Out-Null
+            }
             exit
         } catch {
             [System.Windows.Forms.MessageBox]::Show(
@@ -40,6 +46,45 @@ if (-not (CF-IsAdmin)) {
             exit
         }
     }
+}
+
+# ---------- 控制台窗口（隐藏 / 恢复） ----------
+# 双击 bat 时 cmd 会同步等待 powershell，那个黑色控制台窗口会一直留在界面后面。
+# 界面显示出来以后把它藏掉，程序正常退出时再放回去（放回去是为了让 bat 在
+# 启动失败时还能显示 pause 提示，不会留一个看不见的僵尸窗口）。
+$script:ConH          = [IntPtr]::Zero
+$script:ConWasVisible = $null
+
+function Get-ConHandle {
+    if ($script:ConH -ne [IntPtr]::Zero) { return $script:ConH }
+    try {
+        if (-not ('CFNative.CFConsole' -as [type])) {
+            $sig = '[DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();' +
+                   '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' +
+                   '[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);'
+            Add-Type -MemberDefinition $sig -Name 'CFConsole' -Namespace 'CFNative' | Out-Null
+        }
+        $script:ConH = [CFNative.CFConsole]::GetConsoleWindow()
+    } catch { }
+    return $script:ConH
+}
+
+function Hide-ConsoleWindow {
+    $h = Get-ConHandle
+    if ($h -eq [IntPtr]::Zero) { return }      # 没有控制台（比如从 IDE 里跑）
+    try {
+        if ($null -eq $script:ConWasVisible) {
+            $script:ConWasVisible = [CFNative.CFConsole]::IsWindowVisible($h)
+        }
+        [void][CFNative.CFConsole]::ShowWindow($h, 0)   # SW_HIDE
+    } catch { }
+}
+
+function Show-ConsoleWindow {
+    $h = Get-ConHandle
+    if ($h -eq [IntPtr]::Zero) { return }
+    if ($script:ConWasVisible -ne $true) { return }     # 本来就是隐藏启动的，别让它冒出来
+    try { [void][CFNative.CFConsole]::ShowWindow($h, 5) } catch { }   # SW_SHOW
 }
 
 # ---------- 配色 ----------
@@ -1466,6 +1511,7 @@ $form.Add_FormClosing({
         if ($ans -ne 'Yes') { $_.Cancel = $true; return }
     }
     $timer.Stop()
+    Show-ConsoleWindow
 })
 
 # =====================================================================
@@ -1475,6 +1521,7 @@ Apply-Lang
 
 $form.Add_Shown({
     if ($Shot -ne '') { return }
+    Hide-ConsoleWindow
     Show-Welcome
 })
 
