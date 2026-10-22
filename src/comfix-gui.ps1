@@ -99,6 +99,7 @@ $script:TXT = @{
         'scope.0'     = '串口设备（COM 口）'
         'scope.1'     = '厂商自定义设备'
         'scope.2'     = '全部 USB 设备'
+'scope.3'     = '全部 USB 设备（含 HID）'
         'btn.fix'     = '一  键  修  复'
         'btn.watch.off' = '固定守护：关'
         'btn.watch.on'  = '固定守护：开'
@@ -219,6 +220,7 @@ $script:TXT = @{
         'scope.0'     = 'Serial ports (COM)'
         'scope.1'     = 'Vendor-specific devices'
         'scope.2'     = 'All USB devices'
+'scope.3'     = 'All USB devices (incl. HID)'
         'btn.fix'     = 'F I X   N O W'
         'btn.watch.off' = 'Auto-pin: OFF'
         'btn.watch.on'  = 'Auto-pin: ON'
@@ -408,7 +410,7 @@ function Save-DeskReport {
         try { [void]$L.Add('Bitness  : ' + $(if ([Environment]::Is64BitOperatingSystem) { '64-bit' } else { '32-bit' })) } catch { }
         [void]$L.Add('Admin    : ' + $(if (CF-IsAdmin) { 'yes' } else { 'NO (repair will always fail)' }))
         try { [void]$L.Add('Language : ' + $script:LANG) } catch { }
-        try { [void]$L.Add('Scope    : ' + (CF-ScopeName (Get-Scope)) + '   target COM' + (Get-TargetPort)) } catch { }
+        try { [void]$L.Add('Scope    : ' + (CF-ScopeName (Get-Scope) (Get-IncludeHid)) + '   target COM' + (Get-TargetPort)) } catch { }
         [void]$L.Add('')
         [void]$L.Add('------ Error details ------')
         if ($ErrText -eq '') { $ErrText = '(no error captured - see the operation log below)' }
@@ -431,7 +433,7 @@ function Save-DeskReport {
         try { [void]$L.Add('系统 : ' + [Environment]::OSVersion.VersionString) } catch { }
         try { [void]$L.Add('位数 : ' + $(if ([Environment]::Is64BitOperatingSystem) { '64 位' } else { '32 位' })) } catch { }
         [void]$L.Add('权限 : ' + $(if (CF-IsAdmin) { '管理员' } else { '普通用户（修复一定会失败）' }))
-        try { [void]$L.Add('范围 : ' + (CF-ScopeName (Get-Scope)) + '　目标 COM' + (Get-TargetPort)) } catch { }
+        try { [void]$L.Add('范围 : ' + (CF-ScopeName (Get-Scope) (Get-IncludeHid)) + '　目标 COM' + (Get-TargetPort)) } catch { }
         [void]$L.Add('')
         [void]$L.Add('══════ 错误详情 ══════')
         if ($ErrText -eq '') { $ErrText = '(没有捕获到具体错误，请看下面的操作日志)' }
@@ -550,6 +552,7 @@ $cbScope.Size = New-Object System.Drawing.Size(198, 26)
 [void]$cbScope.Items.Add('')
 [void]$cbScope.Items.Add('')
 [void]$cbScope.Items.Add('')
+[void]$cbScope.Items.Add('')
 $cbScope.SelectedIndex = 2
 $form.Controls.Add($cbScope)
 
@@ -628,6 +631,11 @@ function Get-Scope {
     }
 }
 
+# 第 4 项「全部 USB 设备（含 HID）」才把 HID 设备的离线记录也纳入清理
+function Get-IncludeHid {
+    return ($cbScope.SelectedIndex -eq 3)
+}
+
 # ---------- 按钮 ----------
 function New-Btn($x, $w, $color) {
     $b = New-Object System.Windows.Forms.Button
@@ -685,9 +693,10 @@ function Apply-Lang {
 
     $i = $cbScope.SelectedIndex
     $cbScope.Items.Clear()
-    [void]$cbScope.Items.Add((T 'scope.0'))
-    [void]$cbScope.Items.Add((T 'scope.1'))
-    [void]$cbScope.Items.Add((T 'scope.2'))
+[void]$cbScope.Items.Add((T 'scope.0'))
+[void]$cbScope.Items.Add((T 'scope.1'))
+[void]$cbScope.Items.Add((T 'scope.2'))
+[void]$cbScope.Items.Add((T 'scope.3'))
     $cbScope.SelectedIndex = $(if ($i -lt 0) { 2 } else { $i })
 
     $btnFix.Text   = T 'btn.fix'
@@ -749,6 +758,10 @@ function Get-HelpLines {
             '    Serial ports (COM)   - most conservative; use when sure it is serial',
             '    Vendor-specific      - covers burners / test fixtures',
             '    All USB devices      - covers both; use this when unsure (default)',
+            '    All USB + HID        - pick this when the new model is HID-based',
+            '',
+            '  Only offline records are removed; plugged-in devices are never touched.',
+            '  Hubs, controllers, keyboards, mice, audio, network stay protected.',
             '',
             'HOW TO USE',
             '  1. Double-click "请双击这个-USB串口一键修复.bat", approve the UAC prompt',
@@ -817,10 +830,14 @@ function Get-HelpLines {
         '  生产现场往往不止一种机型：',
         '    · 有的是 USB 转串口（会生成 COM 口）',
         '    · 有的直接就是 USB 设备，根本没有 COM 口',
-        '  只清串口的话，第二种机型的问题就碰不到。所以给了三个范围：',
-        '    串口设备（COM 口）  最保守，确定是串口机型时用',
-        '    厂商自定义设备      烧录器、测试治具这类',
-        '    全部 USB 设备       两种都覆盖，不确定机型时用这个（默认）',
+        '  只清串口的话，第二种机型的问题就碰不到。所以给了四个范围：',
+        '    串口设备（COM 口）    最保守，确定是串口机型时用',
+        '    厂商自定义设备        烧录器、测试治具这类',
+        '    全部 USB 设备         两种都覆盖，不确定机型时用这个（默认）',
+        '    全部 USB 设备(含HID)  新机型走 HID 免驱时选这个',
+        '',
+        '  · 只删「已经拔掉」的记录，插着的一条不动',
+        '  · 集线器、控制器、键鼠、声卡、网卡永久保护',
         '',
         '怎么用',
         '  1. 双击「请双击这个-USB串口一键修复.bat」，弹权限点「是」',
@@ -1189,7 +1206,7 @@ function Show-QuickHealth {
 $btnFix.Add_Click({
     $target = Get-TargetPort
     $scope = Get-Scope
-    $sn = CF-ScopeName $scope
+    $sn = CF-ScopeName $scope (Get-IncludeHid)
 
     $body = (Fmt 'd.fix.s1' @{a = $sn }) + "`n`n" +
             (T 'd.fix.l0') + "`n" + (T 'd.fix.lb') + "`n"
@@ -1215,7 +1232,7 @@ $btnFix.Add_Click({
     Add-LogLine '' 'info'
     Add-LogLine (Fmt 'l.start' @{a = $sn; b = $target }) 'info'
     try {
-        $r = CF-FullFix -KeepPort $target -Scope $scope
+        $r = CF-FullFix -KeepPort $target -Scope $scope -IncludeHid:(Get-IncludeHid)
         Add-LogLine '' 'info'
         Add-LogLine (T 'l.done') 'info'
         if ($r.Blocks) {
