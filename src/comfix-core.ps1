@@ -221,9 +221,13 @@ function CF-CatName([string]$cat) {
     }
 }
 
-function CF-ScopeName([string]$sc) {
+function CF-ScopeName([string]$sc, [bool]$InclHid = $false) {
     if ($sc -eq 'VendorOnly') { return (CF-T '厂商自定义设备' 'Vendor-specific') }
-    if ($sc -eq 'AllUsb')     { return (CF-T '全部 USB 设备' 'All USB devices') }
+    if ($sc -eq 'AllUsb') {
+        $n = (CF-T '全部 USB 设备' 'All USB devices')
+        if ($InclHid) { $n = $n + (CF-T '（含 HID）' ' (incl. HID)') }
+        return $n
+    }
     return (CF-T '串口设备' 'Serial ports')
 }
 
@@ -882,6 +886,51 @@ function CF-RepairBlocks {
         Note ((CF-T '注册表 Enum 权限' 'Registry Enum permissions')) ((CF-T '正常' 'OK')) ((CF-T '不用动' 'no action')) 'ok'
     }
 
+    # ---- 8) 设备安装日志过大（setupapi.dev.log） ----
+    # 这个文件每装一次设备就追加一段。长到十几 MB 之后，给新设备建记录会明显变慢，
+    # 极端情况直接失败，而设备管理器只表现成"插上没反应"。
+    # 重装系统之所以"能好"，很大一部分原因是顺手把这个日志一起清空了。
+    $bigLog = @()
+    foreach ($n in @('setupapi.dev.log', 'setupapi.setup.log')) {
+        $lp = Join-Path $env:WINDIR ('INF\' + $n)
+        if (-not (Test-Path $lp)) { continue }
+        try {
+            $sz = (Get-Item -LiteralPath $lp -ErrorAction Stop).Length
+            if ($sz -gt 8MB) { $bigLog += [pscustomobject]@{ Path = $lp; Name = $n; Size = $sz } }
+        } catch { }
+    }
+    if ($bigLog.Count -eq 0) {
+        Note ((CF-T '设备安装日志（setupapi）' 'Device install log (setupapi)')) ((CF-T '大小正常' 'size OK')) ((CF-T '不用动' 'no action')) 'ok'
+    } elseif ($DryRun) {
+        Note ((CF-T '设备安装日志（setupapi）' 'Device install log (setupapi)')) (([math]::Round(($bigLog | Measure-Object Size -Sum).Sum / 1MB, 1).ToString() + ' MB')) ((CF-T '将轮转' 'would rotate')) 'would'
+    } else {
+        $rot = 0
+        foreach ($lf in $bigLog) {
+            $dst = $lf.Path + '.' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.bak'
+            try {
+                Move-Item -LiteralPath $lf.Path -Destination $dst -Force -ErrorAction Stop
+                [void]$rot++
+            } catch {
+                [void]$manual.Add((CF-T ($lf.Name + ' 正被占用，本轮没能轮转；重启后再跑一次即可。') ($lf.Name + ' is in use and was not rotated; run again after a reboot.')))
+            }
+        }
+        if ($rot -gt 0) {
+            Note ((CF-T '设备安装日志（setupapi）' 'Device install log (setupapi)')) (([math]::Round(($bigLog | Measure-Object Size -Sum).Sum / 1MB, 1).ToString() + ' MB')) ((CF-T '已轮转（原文件留作 .bak）' 'rotated (kept as .bak)')) 'fixed'
+        }
+    }
+
+    # ---- 顺带体检：第三方驱动包堆积 ----
+    # 装了又卸的旧驱动包会一直留在 INF 目录里，新设备有可能匹配到已经坏掉的旧包。
+    # 这里只提示，不自动删 —— 删错驱动包会直接影响在用的设备。
+    try {
+        $oemN = @(Get-ChildItem -Path (Join-Path $env:WINDIR 'INF\oem*.inf') -ErrorAction SilentlyContinue).Count
+        if ($oemN -ge 60) {
+            $msgZh = '第三方驱动包已积累 ' + $oemN + ' 个（INF\oem*.inf）。装过又卸掉的旧驱动会留在这里，新设备可能匹配到坏掉的旧包。建议用 pnputil /enum-drivers 核对后清理不用的旧包；本工具不自动删。'
+            $msgEn = 'Third-party driver packages accumulated: ' + $oemN + ' (INF\oem*.inf). A new device may match a broken old driver. Review them with pnputil /enum-drivers; this tool does not delete them automatically.'
+            [void]$manual.Add((CF-T $msgZh $msgEn))
+        }
+    } catch { }
+
     # ---- 把原值写到留底目录，方便还原 ----
     if ($BackupDir -ne '' -and (Test-Path $BackupDir) -and $dn.Count -gt 0) {
         try {
@@ -1211,7 +1260,7 @@ function CF-FullFix {
         [switch]$DryRun
     )
     $r = [ordered]@{}
-    CF-Log ('修复范围：' + (CF-ScopeName $Scope)) 'info' ('Scope: ' + (CF-ScopeName $Scope))
+    CF-Log ('修复范围：' + (CF-ScopeName $Scope ([bool]$IncludeHid))) 'info' ('Scope: ' + (CF-ScopeName $Scope ([bool]$IncludeHid)))
 
     CF-Log '──── 第 1 步：留底 ────' 'info' '──── Step 1: snapshot ────'
     if ($DryRun) {
