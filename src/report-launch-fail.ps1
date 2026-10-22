@@ -41,3 +41,20 @@ if ($out.Trim() -ne '') {
 $f = Join-Path $d 'USB修复-启动失败.txt'
 $enc = New-Object System.Text.UTF8Encoding($true)
 try { [System.IO.File]::WriteAllLines($f, $L, $enc) } catch { }
+
+# 控制台窗口可能是隐藏状态（bat 用 -WindowStyle Hidden 启动），
+# 所以这里必须自己弹一个提示框，保证用户知道程序出了问题。
+try {
+    Add-Type -AssemblyName System.Windows.Forms | Out-Null
+    $nl  = [Environment]::NewLine
+    $msg = '程序异常退出，没能打开窗口。' + $nl + $nl +
+           '已在桌面生成：USB修复-启动失败.txt' + $nl +
+           '请把这个文件发给开发，就能定位是哪一种原因。' + $nl + $nl +
+           'The program exited unexpectedly.' + $nl +
+           'A report has been written to the Desktop: USB修复-启动失败.txt'
+    [void][System.Windows.Forms.MessageBox]::Show(
+        $msg,
+        'USB / 串口 一键修复 / USB / COM Port Fix',
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Warning)
+} catch { }
