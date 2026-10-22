@@ -1,7 +1,24 @@
 # USB / 串口 一键修复 &nbsp;·&nbsp; USB / COM Port One-Click Fix
 
-> 让插上认不出的新设备重新被识别，并固定到你指定的串口号。
-> Make newly plugged devices detectable again, and pin them to a fixed COM port.
+> 让插上认不出的 USB / 串口设备重新被识别，并把串口号固定到你指定的 COM。
+> Make an undetected USB / COM device detectable again, and pin it to a fixed port.
+
+<p align="center">
+  <a href="https://github.com/podcatcher962/usb-com-fix/releases/latest">
+    <img src="https://img.shields.io/badge/⬇_下载免安装包-Download_v3.0-3DC98A?style=for-the-badge" height="40" alt="Download">
+  </a>
+</p>
+
+<p align="center">
+  <b>直链 / Direct link：</b><br>
+  <a href="https://github.com/podcatcher962/usb-com-fix/releases/download/v3.0.0/usb-com-fix-v3.0.0.zip">
+    https://github.com/podcatcher962/usb-com-fix/releases/download/v3.0.0/usb-com-fix-v3.0.0.zip
+  </a>
+</p>
+
+<p align="center">
+  <sub>解压 → 双击「请双击这个-USB串口一键修复.bat」→ UAC 点「是」→ 先「只检查」→ 再「一键修复」</sub>
+</p>
 
 <p align="center">
   <img src="docs/screenshot-zh.png" width="700" alt="中文界面">
@@ -22,19 +39,25 @@
 
 ## 这是什么
 
-一台电脑长期高频插拔 USB 设备（测试治具、烧录器、USB 转串口、读卡器……），
-Windows 的设备记录会越积越多、越积越乱，最终出现这一组典型症状：
+一台 Windows 电脑长期高频插拔 USB 设备（USB 转串口、开发板、烧录器、测试治具、读卡器、USB 网卡……），
+设备记录会越积越多、越积越乱，最终出现这一组典型症状：
 
-- 以前测过的设备插上还能认，**没烧过固件的新设备插上完全没反应**
-- 设备管理器里连个黄色感叹号都不给，什么都不多
+- 插上 USB 设备，**设备管理器里一条都不多**，连个黄色感叹号都不给
+- 或者多出一个「未知设备」，带黄色感叹号，属性里代码 10 / 43
+- 以前插过的设备现在还能用，**没插过的一概没反应**
 - 删掉设备、重启，能认一次，再插又不认
 - 重装系统能好一阵，几周后又复发
 - 换别的电脑一切正常，只有这一台不行
-- 串口号跳来跳去（COM3 → COM7 → COM11），跟生产软件对不上
+- 串口号跳来跳去（COM3 → COM7 → COM11），跟软件的配置对不上
+- COM 号被占用，或者插上根本不给号
 
-这个工具就是针对这一组症状做的：**一次点完，把挡路的全清掉，把该固定的固定回去。**
+这个工具就是针对这一组症状做的：**一次点完，把挡路的全清掉，该固定的固定回去。**
 
-它不是"清理软件"，清理只是手段；**目的是让新设备能被认出来。**
+它不是"清理软件"，清理只是手段；**目的是让设备能被正常认出来。**
+
+> 产线 / 工控环境最容易踩到最后一类：早年为了固定端口号，用 bat 或手工注册表
+> 按硬件 ID 写了 `PortName`，却没同步系统那张号池位图 —— 这正是「新设备完全认不出」的经典成因，
+> 详见 [为什么"固定端口号"会把自己搞坏](#为什么固定端口号会把自己搞坏)。
 
 ---
 
@@ -73,7 +96,7 @@ Windows 管串口号靠两张表：
 于是：设备说"我是 COM3"，台账说"COM3 没被占"，新设备来要号时台账分给它一个号，
 正好撞上名牌上写死的号 → Windows 直接不让它启动 → **设备管理器不认。**
 
-这就是"以前能测的还能测、新机器一律认不出"的根源。
+这就是"插过的还能用、没插过的一律没反应"的根源。
 
 本工具的做法是走官方那条路径的逻辑：
 
