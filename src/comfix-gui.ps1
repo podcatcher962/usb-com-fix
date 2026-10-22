@@ -104,7 +104,7 @@ $script:TXT = @{
         'btn.watch.on'  = '固定守护：开'
         'btn.check'   = '只检查'
         'btn.undo'    = '还原上次'
-        'foot'        = '报告自动保存到桌面（设备检查报告.txt）　　留底在 C:\ProgramData\ComFix\backup'
+        'foot'        = '报告自动保存到桌面（{a}）　　留底在 C:\ProgramData\ComFix\backup'
         'admin.ok'    = '管理员权限：已获得　|　只删「离线」的历史记录，插着的设备一条都不动'
         'admin.no'    = '管理员权限：未获得（修复会失败）'
         'menu.lang'   = '语言'
@@ -224,7 +224,7 @@ $script:TXT = @{
         'btn.watch.on'  = 'Auto-pin: ON'
         'btn.check'   = 'Check only'
         'btn.undo'    = 'Restore'
-        'foot'        = 'Report is saved to the Desktop (设备检查报告.txt)　　Snapshots in C:\ProgramData\ComFix\backup'
+        'foot'        = 'Report is saved to the Desktop ({a})　　Snapshots in C:\ProgramData\ComFix\backup'
         'admin.ok'    = 'Administrator: yes  |  Only "offline" records are removed; plugged-in devices are never touched'
         'admin.no'    = 'Administrator: NO (repair will fail)'
         'menu.lang'   = 'Language'
@@ -234,7 +234,7 @@ $script:TXT = @{
         'menu.tools'  = 'Tools'
         'menu.probe'  = 'Deep Diagnosis (read-only, run with the new device plugged in)'
         'log.probe.run'    = 'Running deep diagnosis... (read-only, changes nothing)'
-        'log.probe.done'   = 'Done. Report on Desktop: USB认不出-取证报告.txt'
+        'log.probe.done'   = 'Done. Report on Desktop: USB-Not-Detected-Report.txt'
         'log.probe.nofile' = 'usbprobe.ps1 not found - the program folder is incomplete.'
         'log.probe.result' = 'Diagnosis summary'
         'menu.zh'     = '中文'
@@ -322,7 +322,7 @@ $script:TXT = @{
         'd.exit.t'    = 'Confirm'
         'd.exit.b'    = 'Auto-pin is still running. Exit anyway?'
         'd.err.t'     = 'Error'
-        'd.err.b'     = "The program hit an unexpected error and stopped.`n`nDetails were written to the Desktop:`nUSB修复-出错报告.txt`n`nSummary:`n{a}`n`nPlease send that file to the developer."
+        'd.err.b'     = "The program hit an unexpected error and stopped.`n`nDetails were written to the Desktop:`nUSB-Fix-Error-Report.txt`n`nSummary:`n{a}`n`nPlease send that file to the developer."
         'd.stop'      = 'Please wait'
         'd.stopb'     = 'An operation is in progress. Let it finish first.'
         'hdr.help'    = 'Instructions'
@@ -379,10 +379,16 @@ function Format-ErrText($er) {
     return $t
 }
 
+function Rep-Name {
+    # 报告文件名跟随界面语言，英文模式下不留中文
+    if ($script:LANG -eq 'en') { return 'Device-Check-Report.txt' }
+    return '设备检查报告.txt'
+}
+
 function Save-DeskReport {
     param([string]$Kind = 'ok', [string]$ErrText = '')
     $desk = Get-DeskPath
-    $main = Join-Path $desk '设备检查报告.txt'
+    $main = Join-Path $desk (Rep-Name)
 
     try { CF-WriteReport $main } catch { }
 
@@ -413,7 +419,7 @@ function Save-DeskReport {
         foreach ($t in $script:CF_LOG) { [void]$L.Add('  ' + $t) }
         [void]$L.Add('')
         [void]$L.Add('------ How to report ------')
-        [void]$L.Add('  Send this file together with "设备检查报告.txt" from the Desktop.')
+        [void]$L.Add('  Send this file together with "Device-Check-Report.txt" from the Desktop.')
         [void]$L.Add('  Also describe one thing: when you plug in a new device, does Device')
         [void]$L.Add('  Manager stay completely silent, or does a yellow exclamation mark appear?')
         [void]$L.Add('  If there is an exclamation mark, double-click it and note the error code.')
@@ -441,7 +447,8 @@ function Save-DeskReport {
         [void]$L.Add('  还是「多了一个黄色感叹号」？如果是感叹号，双击看错误代码是几。')
     }
 
-    $f = Join-Path $desk 'USB修复-出错报告.txt'
+    $repErr = $(if ($en) { 'USB-Fix-Error-Report.txt' } else { 'USB修复-出错报告.txt' })
+    $f = Join-Path $desk $repErr
     $enc = New-Object System.Text.UTF8Encoding($true)
     try { [System.IO.File]::WriteAllLines($f, $L, $enc) } catch { }
     return $f
@@ -673,7 +680,7 @@ function Apply-Lang {
     $lbAuthor.Text = T 'app.author'
     $lbPort.Text  = T 'lbl.port'
     $lbScope.Text = T 'lbl.scope'
-    $lbFoot.Text  = T 'foot'
+    $lbFoot.Text  = Fmt 'foot' @{a = (Rep-Name)}
     $lbAdmin.Text = $(if ($script:AdminOk) { T 'admin.ok' } else { T 'admin.no' })
 
     $i = $cbScope.SelectedIndex
@@ -773,8 +780,8 @@ function Get-HelpLines {
             '  - Everything is logged and snapshotted',
             '',
             'REPORTS',
-            '  Desktop\设备检查报告.txt     - full inspection report (always refreshed)',
-            '  Desktop\USB修复-出错报告.txt  - only when something goes wrong',
+            '  Desktop\Device-Check-Report.txt  - full inspection report (always refreshed)',
+            '  Desktop\USB-Fix-Error-Report.txt  - only when something goes wrong',
             '  Snapshots: C:\ProgramData\ComFix\backup\fix-YYYYMMDD-HHMMSS\',
             '',
             'IMPORTANT',
@@ -942,8 +949,8 @@ function Get-AboutLines {
             '  - full snapshot + one-click restore',
             '',
             'Reports',
-            '  Desktop\设备检查报告.txt      full inspection report',
-            '  Desktop\USB修复-出错报告.txt  error report',
+            '  Desktop\Device-Check-Report.txt  full inspection report',
+            '  Desktop\USB-Fix-Error-Report.txt  error report',
             '',
             '© Lanlan Eternal'
         )
@@ -1075,7 +1082,8 @@ $mProbe.Add_Click({
         # 取证脚本会把结论打到控制台；GUI 里没有控制台，所以直接读报告
         & $probe -NoOpen -OutDir $desk 2>&1 | Out-Null
 
-        $f = Join-Path $desk 'USB认不出-取证报告.txt'
+        $probeName = $(if ($script:LANG -eq 'en') { 'USB-Not-Detected-Report.txt' } else { 'USB认不出-取证报告.txt' })
+        $f = Join-Path $desk $probeName
         if (Test-Path $f) {
             Add-LogLine '' 'info'
             Add-LogLine ('------ ' + (T 'log.probe.result') + ' ------') 'info'
