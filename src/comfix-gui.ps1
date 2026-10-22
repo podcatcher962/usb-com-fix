@@ -476,27 +476,38 @@ $menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 $menu.RenderMode = 'System'
 $form.MainMenuStrip = $menu
 
-$mLang  = New-Object System.Windows.Forms.ToolStripMenuItem
 $mTools = New-Object System.Windows.Forms.ToolStripMenuItem
 $mProbe = New-Object System.Windows.Forms.ToolStripMenuItem
 $mHelp  = New-Object System.Windows.Forms.ToolStripMenuItem
 $mDisc  = New-Object System.Windows.Forms.ToolStripMenuItem
 $mAbout = New-Object System.Windows.Forms.ToolStripMenuItem
 
-$mZh = New-Object System.Windows.Forms.ToolStripMenuItem
-$mEn = New-Object System.Windows.Forms.ToolStripMenuItem
+# 语言切换：菜单栏右侧两个分段按键，不放在下拉菜单里。
+# 这样英文用户不必认识「语言」两个字，看到 English 就能直接点；
+# 当前语言那个按键是蓝色加粗的，一眼能看出现在是哪种语言。
+$mZh = New-Object System.Windows.Forms.ToolStripButton
+$mEn = New-Object System.Windows.Forms.ToolStripButton
+foreach ($lb in @($mZh, $mEn)) {
+    $lb.DisplayStyle = 'Text'
+    $lb.CheckOnClick = $false
+    $lb.AutoToolTip = $false
+    $lb.ToolTipText = 'Language / 语言'
+    $lb.Alignment   = [System.Windows.Forms.ToolStripItemAlignment]::Right
+    $lb.Padding     = New-Object System.Windows.Forms.Padding(7, 0, 7, 0)
+    $lb.Margin      = New-Object System.Windows.Forms.Padding(0)
+}
 $mZh.Text = '中文'
 $mEn.Text = 'English'
-[void]$mLang.DropDownItems.Add($mZh)
-[void]$mLang.DropDownItems.Add($mEn)
 
 [void]$mTools.DropDownItems.Add($mProbe)
 
-[void]$menu.Items.Add($mLang)
 [void]$menu.Items.Add($mTools)
 [void]$menu.Items.Add($mHelp)
 [void]$menu.Items.Add($mDisc)
 [void]$menu.Items.Add($mAbout)
+# Right 对齐的项从右往左排列，所以先加 English 才显示成「中文 | English」
+[void]$menu.Items.Add($mEn)
+[void]$menu.Items.Add($mZh)
 $form.Controls.Add($menu)
 
 # ---------- 标题 ----------
@@ -612,7 +623,8 @@ function Set-Busy([bool]$b) {
     $btnUndo.Enabled  = -not $b
     $cbPort.Enabled   = -not $b
     $cbScope.Enabled  = -not $b
-    $mLang.Enabled    = -not $b
+    $mZh.Enabled      = -not $b
+    $mEn.Enabled      = -not $b
     if ($b) { $bar.Style = 'Marquee' } else { $bar.Style = 'Continuous'; $bar.Value = 0 }
     [System.Windows.Forms.Application]::DoEvents()
 }
@@ -710,14 +722,26 @@ function Apply-Lang {
         $btnWatch.BackColor = $C_BLUE
     }
 
-    $mLang.Text  = T 'menu.lang'
     $mTools.Text = T 'menu.tools'
     $mProbe.Text = T 'menu.probe'
     $mHelp.Text  = T 'menu.help'
     $mDisc.Text  = T 'menu.disc'
     $mAbout.Text = T 'menu.about'
-    $mZh.Text = T 'menu.zh'
-    $mEn.Text = T 'menu.en'
+    # 语言按键的文字固定为「中文 / English」，不随界面语言变化——
+    # 两种语言的用户都能直接找到自己那一个，当前语言蓝色加粗。
+    $mZh.Checked = ($script:LANG -eq 'zh')
+    $mEn.Checked = ($script:LANG -eq 'en')
+    if ($script:LANG -eq 'zh') {
+        $mZh.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9, [System.Drawing.FontStyle]::Bold)
+        $mEn.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9, [System.Drawing.FontStyle]::Regular)
+        $mZh.ForeColor = $C_BLUE
+        $mEn.ForeColor = $C_TEXT
+    } else {
+        $mZh.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9, [System.Drawing.FontStyle]::Regular)
+        $mEn.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9, [System.Drawing.FontStyle]::Bold)
+        $mZh.ForeColor = $C_TEXT
+        $mEn.ForeColor = $C_BLUE
+    }
 
     Set-Status (T 'st.ready')
 }
