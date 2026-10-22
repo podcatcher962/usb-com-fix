@@ -1180,6 +1180,16 @@ function CF-PinDevice {
     $dp   = Join-Path $key 'Device Parameters'
     $old  = $Instance.PortNum
 
+    # 硬闸：只有「系统已经认定是串口」的设备才允许写端口号。
+    # 纯 USB 设备（HID / WinUSB 自定义 / 存储 / 网卡）根本没有串口接口，
+    # 给它们写 PortName 只会让号池多一个假占位，进而害到下一台真串口。
+    # 判定依据两条满足其一：已有系统分配的 COM 号，或 Class 本身就是 ports。
+    $isPortsClass = ([string]$Instance.Class -match '^(ports|serial)$')
+    if ($old -lt 1 -and -not $isPortsClass) {
+        CF-Log ('  跳过：这不是串口设备，不写端口号（' + $iid + '）') 'warn' ('  skipped: not a serial device, port name left untouched: ' + $iid)
+        return $false
+    }
+
     $others = @(CF-GetSerialInstances | Where-Object { $_.Online -and $_.PortNum -eq $Target -and $_.InstanceId -ne $iid })
     if ($others.Count -gt 0) {
         CF-Log ('  目标号 COM' + $Target + ' 正被另一台在线设备占用，跳过：' + $iid) 'warn' ('  COM' + $Target + ' is used by another online device, skipping: ' + $iid)
