@@ -226,10 +226,13 @@ This is a Windows rule, not a flaw of the tool. Therefore:
 
 ## Bilingual
 
-The menu bar has **Language / Help / Disclaimer / About**, and the entire window switches between
-Chinese and English: title bar, buttons, drop-downs, status bar, log, every dialog, all three
-documentation dialogs - **even the generated report files match the selected language.**
-The choice is remembered, and the first launch follows the system language.
+The **right side of the menu bar has two buttons: "中文 | English"**. The active language is shown in
+bold blue - one click switches the whole window. There is no "Language" drop-down, so an English
+speaker never has to recognise a Chinese menu label: seeing `English` is enough.
+
+What switches: title bar, the rest of the menu bar, buttons, drop-downs, status bar, log, every
+message box, all three documentation dialogs - **even the generated report files match the selected
+language**. The choice is remembered, and the first launch follows the system language.
 
 ---
 
