@@ -200,13 +200,12 @@ usb-com-fix/
 │  ├─ comfix-gui.ps1          界面、双语、菜单
 │  ├─ comfix-core.ps1         七步修复、留底还原、报告
 │  ├─ usbprobe.ps1            深度取证（只读）
-│  ├─ report-launch-fail.ps1  启动失败兜底报告
-│  └─ 启动-USB串口一键修复.bat
+│  └─ report-launch-fail.ps1  启动失败兜底报告
 ├─ docs/
 │  ├─ screenshot-zh.png
-│  ├─ screenshot-en.png
-│  └─ 使用说明.md
-├─ build.py                   打包成"发给别人"的目录 + zip
+│  └─ screenshot-en.png
+├─ 使用说明（先看这个）.txt
+├─ build.py                   打包成"发给别人"的目录 + zip（bat 由它生成）
 ├─ LICENSE
 └─ README.md
 ```
