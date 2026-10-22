@@ -1,5 +1,9 @@
 # USB / 串口 一键修复 &nbsp;·&nbsp; USB / COM Port One-Click Fix
 
+<p align="center">
+  <b>简体中文</b> &nbsp;|&nbsp; <a href="README.en.md">English</a>
+</p>
+
 > 让插上认不出的 USB / 串口设备重新被识别，并把串口号固定到你指定的 COM。
 > Make an undetected USB / COM device detectable again, and pin it to a fixed port.
 
@@ -320,6 +324,57 @@ PowerShell 5.1 和 cmd 对编码的要求不一样，这两步不能省。
 
 MIT License · 详见 [LICENSE](LICENSE)
 
-## 作者
+---
+
+## 免责声明
+
+**请在使用前完整阅读本节。使用本工具即表示你已理解并接受以下全部条款。**
+
+1. **系统级操作**：本程序会修改 Windows 注册表（设备记录、`COM Name Arbiter` 号池位图）、
+   设备安装策略、设备安装日志与部分设备状态。这类操作本身带有不可完全消除的风险。
+2. **无担保**：本程序按「现状」提供，不附带任何明示或暗示的担保，包括但不限于适销性、
+   特定用途适用性与不侵权的担保。作者不承诺本程序能修复任何特定故障，也不承诺零副作用。
+3. **责任限制**：在适用法律允许的最大范围内，作者不对因使用或无法使用本程序而导致的
+   任何直接、间接、附带、特殊或后果性损失承担责任，包括但不限于数据丢失、设备异常、
+   生产中断、工期延误与商业利润损失。
+4. **请先小范围验证**：正式部署前，**务必先在一台机器上验证**，确认有效且无不良副作用后再批量使用。
+   关键设备请自行创建系统还原点或完整备份。程序内已提供「还原上次」，但不构成数据安全保证。
+5. **不涉及的范围**：本程序不修改固件、不刷写芯片、不改变被修设备本身，也不修改任何生产或业务软件。
+   硬件故障（端口损坏、供电不足、控制器故障）不在本程序的处理范围内。
+6. **合规使用**：请仅在你拥有管理权限、且获得授权使用的计算机上运行本程序。
+   因超出授权范围使用而产生的后果由使用者自行承担。
+7. **条款不接受**：若你不同意上述任一条件，请立即停止使用并删除本程序全部文件。
+
+---
+
+## Disclaimer
+
+**Read this section in full before use. Using this program means you understand and accept all terms below.**
+
+1. **System-level changes.** This program modifies the Windows registry (device records, the
+   `COM Name Arbiter` port bitmap), device installation policy, the device setup log, and the state
+   of some devices. Such operations carry risks that cannot be fully eliminated.
+2. **No warranty.** The program is provided "AS IS", without warranty of any kind, express or implied,
+   including but not limited to the warranties of merchantability, fitness for a particular purpose,
+   and non-infringement. The author does not guarantee that it will fix any specific fault, nor that
+   it is free of side effects.
+3. **Limitation of liability.** To the maximum extent permitted by applicable law, the author shall not
+   be liable for any direct, indirect, incidental, special, or consequential damages arising from the
+   use of, or inability to use, this program — including but not limited to loss of data, device
+   malfunction, production downtime, schedule delays, and loss of business profits.
+4. **Validate on one machine first.** Before rolling out, **test on a single machine** and confirm it
+   works without adverse side effects. Create a system restore point or a full backup on critical
+   machines. The built-in "Restore last" function is a convenience, not a guarantee of data safety.
+5. **Out of scope.** This program does not modify firmware, flash chips, or the device being repaired,
+   and does not touch any production or business software. Hardware faults (damaged ports,
+   insufficient power, faulty controllers) are outside its scope.
+6. **Authorized use only.** Run this program only on computers you own or are authorized to administer.
+   You are responsible for any consequence of using it beyond that authorization.
+7. **Not accepted?** If you do not agree with any of the above, stop using the program immediately and
+   delete all of its files.
+
+---
+
+## 作者 / Author
 
 **© 2026 永远的兰兰 · Lanlan Eternal**
