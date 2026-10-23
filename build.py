@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 把 src/ 打包成可直接发给别人的目录 + zip。
 
@@ -21,7 +21,7 @@ ROOT = 'USB串口一键修复'
 OUT_DIR = os.path.join(HERE, ROOT)
 OUT_ZIP = os.path.join(HERE, ROOT + '.zip')
 
-PS1 = ['comfix-gui.ps1', 'comfix-core.ps1', 'usbprobe.ps1', 'report-launch-fail.ps1']
+PS1 = ['comfix-gui.ps1', 'comfix-core.ps1', 'usbprobe.ps1', 'elevate.ps1', 'report-launch-fail.ps1']
 
 BAT = '''@echo off
 chcp 936 >nul
@@ -30,25 +30,45 @@ cd /d "%~dp0"
 
 if not exist "%~dp0_program\\comfix-gui.ps1" goto nofile
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath '%~dp0' -Recurse -Include *.ps1 | Unblock-File" >nul 2>&1
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0_program\\comfix-gui.ps1" > "%TEMP%\\usbfix_out.txt" 2>&1
+rem ============================================================
+rem  第一步：确认已经是管理员
+rem  双击时由 bat 自己提权（提权后重新启动这个 bat），
+rem  不让隐藏窗口里的脚本去请求提权 —— 那样 UAC 提示可能
+rem  落在后台，表现成「双击没反应、右键管理员才打得开」。
+rem ============================================================
+fltmc >nul 2>&1
+if errorlevel 1 if not "%USB_FIX_ELEV%"=="1" goto elevate
+goto run
+
+:elevate
+rem 打上标记再提权：万一 fltmc 在这台机器上不可用，也不会反复弹 UAC 转圈
+set USB_FIX_ELEV=1
+rem 路径通过参数传给独立脚本，避免中文/特殊字符把命令行拼坏
+powershell -NoProfile -WindowStyle Hidden -File "%~dp0_program\\elevate.ps1" "%~f0"
+exit /b
+
+:run
+rem 从网盘/微信/压缩包来的脚本默认带「已阻止」标记，先解掉，否则可能加载失败
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Get-ChildItem -LiteralPath '%~dp0' -Recurse -Include *.ps1 | Unblock-File" >nul 2>&1
+
+rem -WindowStyle Hidden：界面运行期间后台不再留一个空白黑框
+rem （程序自己也会再藏一次，双保险）
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0_program\\comfix-gui.ps1" > "%TEMP%\\usbfix_out.txt" 2>&1
 if errorlevel 1 goto failed
 goto end
 
 :nofile
 echo.
-echo   找不到程序文件。请把整个文件夹一起拷过去，不要只拷 bat。
+echo   找不到程序文件。请把压缩包整个解压，再双击里面的 bat。
+echo   只拷 bat 一个文件是不行的。
 echo.
 pause
 exit /b 1
 
 :failed
-echo.
-echo   程序异常退出，正在把错误信息写到桌面...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0_program\\report-launch-fail.ps1" "%TEMP%\\usbfix_out.txt"
-echo   已写报告：USB修复-启动失败.txt
-echo.
-pause
+rem 这里不能用 pause：此时窗口是隐藏的，会卡成一个看不见的常驻进程
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0_program\\report-launch-fail.ps1" "%TEMP%\\usbfix_out.txt"
+goto end
 
 :end
 '''
