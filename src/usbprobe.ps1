@@ -6,6 +6,7 @@
 # ============================================================
 param(
     [string]$OutDir = '',
+    [string]$OutName = 'USB认不出-取证报告.txt',
     [switch]$NoOpen
 )
 
@@ -700,6 +701,24 @@ if ($concl.Count -eq 0) {
 }
 foreach ($c in $concl) { W $c }
 
+# ------------------------------------------------------------
+# 机器可读判定行（给图形界面用，决定要不要接着自动修；人读时可忽略）
+#   FIXABLE  找到明确的可修原因
+#   HARDWARE 系统没枚举到设备，软件层修不了
+#   UNKNOWN  读不到设备列表，判断不了
+# ------------------------------------------------------------
+$reasons = 0
+if ($polHit) { $reasons++ }
+if ($fails.Count -gt 0) { $reasons++ }
+if ($unknown.Count -gt 0) { $reasons++ }
+if ($filterHit -gt 0) { $reasons++ }
+if ($badGroups.Count -gt 0) { $reasons++ }
+if (-not $cimOk -or $cimTotal -eq 0) { $verdict = 'UNKNOWN' }
+elseif ($reasons -gt 0) { $verdict = 'FIXABLE' }
+else { $verdict = 'HARDWARE' }
+W ''
+W ('[VERDICT] ' + $verdict + ' reasons=' + $reasons)
+
 WL
 W '--------------------------------------------------'
 W '把这份报告发回即可，不需要做任何改动。'
@@ -713,12 +732,12 @@ if ($OutDir -eq '') {
     try { $OutDir = [Environment]::GetFolderPath('Desktop') } catch { $OutDir = $env:TEMP }
 }
 if (-not (Test-Path $OutDir)) { $OutDir = $env:TEMP }
-$outFile = Join-Path $OutDir 'USB认不出-取证报告.txt'
+$outFile = Join-Path $OutDir $OutName
 $enc = New-Object System.Text.UTF8Encoding($true)
 try {
     [System.IO.File]::WriteAllText($outFile, $text, $enc)
 } catch {
-    $outFile = Join-Path $env:TEMP 'USB认不出-取证报告.txt'
+    $outFile = Join-Path $env:TEMP $OutName
     [System.IO.File]::WriteAllText($outFile, $text, $enc)
 }
 
