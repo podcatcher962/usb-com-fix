@@ -54,7 +54,7 @@ function Read-Tail([string]$path, [int]$maxBytes = 524288) {
 }
 
 # ---- 注册表读值（不存在返回 $null） ----
-function RV([string]$key, [string]$name) {
+function RegGet([string]$key, [string]$name) {
     try {
         $k = Get-Item $key -ErrorAction Stop
         return $k.GetValue($name)
@@ -141,7 +141,7 @@ if (Test-Path $polRoot) {
             @{N='AllowDeviceIDs';       D='允许列表（只有这里的才让装）'},
             @{N='AllowDeviceClasses';   D='允许的设备类列表'}
         )) {
-            $v = RV $res $kv.N
+            $v = RegGet $res $kv.N
             if ($null -ne $v) {
                 $txt = ''
                 if ($v -is [array]) { $txt = ($v -join ' | ') } else { $txt = [string]$v }
@@ -167,7 +167,7 @@ if (Test-Path $polRoot) {
         W ''
         W '    Settings 子键下的值：'
         foreach ($n in (Get-Item $set).GetValueNames()) {
-            $v = RV $set $n
+            $v = RegGet $set $n
             if ($v -is [array]) { $v = ($v -join ' | ') }
             W ('      ' + $n.PadRight(38) + '= ' + [string]$v)
         }
@@ -187,7 +187,7 @@ $otherHit = $false
 foreach ($o in $other) {
     if (-not (Test-Path $o)) { continue }
     foreach ($n in (Get-Item $o).GetValueNames()) {
-        $v = RV $o $n
+        $v = RegGet $o $n
         if ($v -is [array]) { $v = ($v -join ' | ') }
         W ('    ' + $o + ' \ ' + $n + ' = ' + [string]$v)
         $otherHit = $true
@@ -197,7 +197,7 @@ foreach ($o in $other) {
 if (-not $otherHit) { W '    （无）' }
 
 # 客户端「驱动搜索顺序」
-$soc = RV 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching' 'SearchOrderConfig'
+$soc = RegGet 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching' 'SearchOrderConfig'
 WL
 W ('驱动搜索顺序 SearchOrderConfig = ' + $(if ($null -ne $soc) { [string]$soc } else { '未设置（默认 1：允许 Windows Update 找驱动）' }))
 if ($null -ne $soc -and [string]$soc -eq '0') {
@@ -496,7 +496,7 @@ foreach ($c in $classes) {
     $p = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\' + $c.G
     if (-not (Test-Path $p)) { continue }
     foreach ($f in @('UpperFilters', 'LowerFilters')) {
-        $v = RV $p $f
+        $v = RegGet $p $f
         if ($null -eq $v) { continue }
         foreach ($n in @($v)) {
             $nm = ([string]$n).Trim()
@@ -542,7 +542,7 @@ foreach ($g in $groups) {
     foreach ($i in $insts) {
         $iid = $gName + '\' + [string]$i.PSChildName
         if (NoSerial $iid) { $gNo++ } else { $gSer++ }
-        $cfg = RV $i.PSPath 'ConfigFlags'
+        $cfg = RegGet $i.PSPath 'ConfigFlags'
         $cf  = 0
         if ($null -ne $cfg) { try { $cf = [int]$cfg } catch { $cf = 0 } }
         if (($cf -band 0x0040) -or ($cf -band 0x0020)) {
@@ -595,7 +595,7 @@ foreach ($g in $groups) {
         $iid = $g.PSChildName + '\' + [string]$i.PSChildName
         if (-not (NoSerial $iid)) { continue }
         if ($noSerShown -ge 25) { break }
-        $pn = RV ($i.PSPath + '\Device Parameters') 'PortName'
+        $pn = RegGet ($i.PSPath + '\Device Parameters') 'PortName'
         $gp = $g.PSChildName
         if ($gp.Length -gt 28) { $gp = $gp.Substring(0, 28) + '..' }
         W ('  ' + $gp.PadRight(30) + ([string]$i.PSChildName).PadRight(34) + $(if ($pn) { [string]$pn } else { '-' }))
