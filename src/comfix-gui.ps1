@@ -149,7 +149,7 @@ $script:TXT = @{
         'btn.fix'     = '一  键  修  复'
         'btn.watch.off' = '固定守护：关'
         'btn.watch.on'  = '固定守护：开'
-        'btn.probe'   = '诊断修复'
+        'btn.probe'   = '一键诊断修复'
         'btn.check'   = '只检查'
         'btn.undo'    = '还原上次'
         'foot'        = '报告自动保存到桌面（{a}）　　留底在 C:\ProgramData\ComFix\backup'
@@ -160,6 +160,7 @@ $script:TXT = @{
         'menu.disc'   = '免责声明'
         'menu.about'  = '关于'
         'menu.tools'  = '工具'
+        'menu.fix'    = '直接修复（跳过取证）'
         'menu.probe'  = '只出取证报告（不自动修）'
         'log.probe.run'    = '深度取证中…（只读，不改任何设置）'
         'log.probe.done'   = '取证完成，报告在桌面：USB认不出-取证报告.txt'
@@ -168,13 +169,15 @@ $script:TXT = @{
         'log.probe.verdict.fix' = '判定：这台电脑存在可自动修复的原因'
         'log.probe.verdict.hw'  = '判定：系统压根没枚举到设备，软件层修不了（先查端口 / 线材 / 供电）'
         'log.probe.verdict.unk' = '判定：读不到设备列表，请用管理员身份重跑'
-        'log.probe.autofix'     = '按「诊断修复」的约定，接着立即修复'
+        'log.probe.autofix'     = '按「一键诊断修复」的约定，接着立即修复'
         'log.probe.skip'        = '没有可自动修复的项目，只出报告，不动系统'
         'log.probe.cancel'      = '已取消修复（只保留了报告）'
         'log.probe.err'         = '取证出错：'
         'st.probe.err'          = '取证出错'
-        'd.auto.title'          = '发现问题，立即修复？'
+        'd.auto.title'          = '开始修复？'
+        'd.auto.title2'         = '没有发现明确原因，还修吗？'
         'd.auto.body'           = '取证已完成，完整报告在桌面。{n}{n}判定：{v}{n}{n}现在按同一套流程修复吗？{n}范围：{s}{n}目标串口号：COM{t}{n}{n}（修复前会自动留底，随时能还原）'
+        'd.auto.body2'          = '取证已完成，完整报告在桌面。{n}{n}判定：{v}{n}{n}没判出具体原因（设备可能没插着，或压根没被系统枚举）。{n}仍可执行一次清场：清掉已拔掉的旧记录 + 修系统层拦路项。{n}{n}要继续吗？{n}范围：{s}{n}目标串口号：COM{t}'
         'menu.zh'     = '中文'
         'menu.en'     = 'English'
         'st.ready'    = '就绪'
@@ -190,7 +193,7 @@ $script:TXT = @{
         'st.watchoff' = '守护已停止'
         'st.watcherr' = '守护出错，已停止'
         'l.ready1'    = '就绪。本工具主要用来修复「插上认不出的新设备」。'
-        'l.ready2'    = '建议顺序：先点「只检查」看一眼，再点「一键修复」，修完重启。'
+        'l.ready2'    = '建议顺序：插上设备，点「一键诊断修复」，按提示重启。'
         'l.pool'      = '号池占用 {a} / 256，剩余 {b}，最高 COM{c}'
         'l.serial'    = '串口：插着 {a} 台，历史残留 {b} 条，异常标记 {c} 条'
         'l.dup'       = '发现 {a} 个端口号被多条记录占用（会冲突）'
@@ -281,7 +284,7 @@ $script:TXT = @{
         'btn.fix'     = 'F I X   N O W'
         'btn.watch.off' = 'Auto-pin: OFF'
         'btn.watch.on'  = 'Auto-pin: ON'
-        'btn.probe'   = 'Diagnose'
+        'btn.probe'   = 'Diagnose && Fix'
         'btn.check'   = 'Check only'
         'btn.undo'    = 'Restore'
         'foot'        = 'Report is saved to the Desktop ({a})　　Snapshots in C:\ProgramData\ComFix\backup'
@@ -292,6 +295,7 @@ $script:TXT = @{
         'menu.disc'   = 'Disclaimer'
         'menu.about'  = 'About'
         'menu.tools'  = 'Tools'
+        'menu.fix'    = 'Repair directly (skip diagnosis)'
         'menu.probe'  = 'Diagnosis report only (no repair)'
         'log.probe.run'    = 'Running deep diagnosis... (read-only, changes nothing)'
         'log.probe.done'   = 'Done. Report on Desktop: USB-Not-Detected-Report.txt'
@@ -300,13 +304,15 @@ $script:TXT = @{
         'log.probe.verdict.fix' = 'Verdict: fixable causes found on this machine'
         'log.probe.verdict.hw'  = 'Verdict: Windows never enumerated the device - software cannot fix it (check port / cable / power first)'
         'log.probe.verdict.unk' = 'Verdict: device list unreadable - please run as Administrator'
-        'log.probe.autofix'     = 'As promised by "Diagnose", repairing right away'
+        'log.probe.autofix'     = 'As promised by "Diagnose & Fix", repairing right away'
         'log.probe.skip'        = 'Nothing auto-fixable - report only, system untouched'
         'log.probe.cancel'      = 'Repair cancelled (the report was kept)'
         'log.probe.err'         = 'Diagnosis error: '
         'st.probe.err'          = 'Diagnosis failed'
-        'd.auto.title'          = 'Problems found - repair now?'
+        'd.auto.title'          = 'Start the repair?'
+        'd.auto.title2'         = 'No clear cause found - run it anyway?'
         'd.auto.body'           = 'Diagnosis finished; the full report is on the Desktop.{n}{n}Verdict: {v}{n}{n}Repair now with the same pipeline?{n}Scope: {s}{n}Target COM port: COM{t}{n}{n}(A snapshot is taken first, so it can always be rolled back)'
+        'd.auto.body2'          = 'Diagnosis finished; the full report is on the Desktop.{n}{n}Verdict: {v}{n}{n}No specific cause was found (the device may not be plugged in, or Windows never enumerated it).{n}You can still run a cleanup pass: remove leftover offline records and fix system-level blockers.{n}{n}Continue?{n}Scope: {s}{n}Target COM port: COM{t}'
         'menu.zh'     = '中文'
         'menu.en'     = 'English'
         'st.ready'    = 'Ready'
@@ -322,7 +328,7 @@ $script:TXT = @{
         'st.watchoff' = 'Watch stopped'
         'st.watcherr' = 'Watch failed and stopped'
         'l.ready1'    = 'Ready. Main job: fix new devices that are not detected when plugged in.'
-        'l.ready2'    = 'Suggested order: "Check only" first, then "FIX NOW", then reboot.'
+        'l.ready2'    = 'Suggested order: plug in the device, click "Diagnose & Fix", then reboot when asked.'
         'l.pool'      = 'Port pool {a} / 256 in use, {b} free, highest COM{c}'
         'l.serial'    = 'Serial: {a} plugged in, {b} leftover records, {c} bad flags'
         'l.dup'       = '{a} port number(s) claimed by more than one record (conflict)'
@@ -545,6 +551,7 @@ $menu.RenderMode = 'System'
 $form.MainMenuStrip = $menu
 
 $mTools = New-Object System.Windows.Forms.ToolStripMenuItem
+$mFix   = New-Object System.Windows.Forms.ToolStripMenuItem
 $mProbe = New-Object System.Windows.Forms.ToolStripMenuItem
 $mHelp  = New-Object System.Windows.Forms.ToolStripMenuItem
 $mDisc  = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -567,6 +574,7 @@ foreach ($lb in @($mZh, $mEn)) {
 $mZh.Text = '中文'
 $mEn.Text = 'English'
 
+[void]$mTools.DropDownItems.Add($mFix)
 [void]$mTools.DropDownItems.Add($mProbe)
 
 [void]$menu.Items.Add($mTools)
@@ -685,7 +693,7 @@ $script:CF_OnLog = { param($line, $level) Add-LogLine $line $level }
 
 function Set-Busy([bool]$b) {
     $script:Busy = $b
-    $btnFix.Enabled   = -not $b
+    $mFix.Enabled     = -not $b
     $btnWatch.Enabled = -not $b
     $btnProbe.Enabled = -not $b
     $btnCheck.Enabled = -not $b
@@ -731,12 +739,11 @@ function New-Btn($x, $w, $color) {
     return $b
 }
 
-$btnFix   = New-Btn 24 160 $C_GREEN
-$btnProbe = New-Btn 195 110 $C_AMBER
-$btnCheck = New-Btn 316 96 $C_GRAY
-$btnWatch = New-Btn 423 136 $C_BLUE
-$btnUndo  = New-Btn 570 124 $C_GRAY
-$form.Controls.AddRange(@($btnFix, $btnProbe, $btnCheck, $btnWatch, $btnUndo))
+$btnProbe = New-Btn 24 200 $C_GREEN
+$btnCheck = New-Btn 244 130 $C_GRAY
+$btnWatch = New-Btn 394 150 $C_BLUE
+$btnUndo  = New-Btn 564 132 $C_GRAY
+$form.Controls.AddRange(@($btnProbe, $btnCheck, $btnWatch, $btnUndo))
 
 $lbFoot = New-Object System.Windows.Forms.Label
 $lbFoot.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 8.5)
@@ -781,8 +788,8 @@ function Apply-Lang {
 [void]$cbScope.Items.Add((T 'scope.3'))
     $cbScope.SelectedIndex = $(if ($i -lt 0) { 2 } else { $i })
 
-    $btnFix.Text   = T 'btn.fix'
     $btnProbe.Text = T 'btn.probe'
+    $mFix.Text     = T 'menu.fix'
     $btnCheck.Text = T 'btn.check'
     $btnUndo.Text  = T 'btn.undo'
     if ($script:Watching) {
@@ -861,7 +868,7 @@ function Get-HelpLines {
             'HOW TO USE (recommended order)',
             '  1. Double-click "请双击这个-USB串口一键修复.bat", approve the UAC prompt',
             '  2. Plug in the device that is not detected; choose port and scope',
-            '  3. Click "Diagnose":',
+            '  3. Click "Diagnose & Fix":',
             '       it runs a read-only deep diagnosis first, and when it finds a',
             '       fixable cause it goes straight on to repair - one click, no second step.',
             '       If Windows never enumerated the device, it only writes the report',
@@ -870,7 +877,7 @@ function Get-HelpLines {
             '  5. Plug in a new device and see whether it is detected',
             '',
             '  Prefer to look first? The old order still works:',
-            '       "Check only" for a report, then "FIX NOW".',
+            '       "Check only" for a report, then menu "Tools -> Repair directly".',
             '  Menu "Tools -> Diagnosis report only" = diagnose without repairing.',
             '',
             'CAN I RUN IT WITHOUT ANY DEVICE PLUGGED IN?',
@@ -959,7 +966,7 @@ function Get-HelpLines {
         '怎么用（推荐顺序）',
         '  1. 双击「请双击这个-USB串口一键修复.bat」，弹权限点「是」',
         '  2. 把那台认不出的设备插上，先选好端口号和修复范围',
-        '  3. 点「诊断修复」：',
+        '  3. 点「一键诊断修复」：',
         '       先做深度取证（只读，不改任何东西），',
         '       判出「有可修的原因」就直接接着修，不用再点第二次。',
         '       判出「系统压根没枚举到设备」就只出报告，不动系统 ——',
@@ -968,7 +975,7 @@ function Get-HelpLines {
         '  5. 重启后插一台新机器，看认不认',
         '',
         '  想自己先看一眼再决定，也可以按老顺序做：',
-        '       先「只检查」出报告，再「一 键 修 复」。',
+        '       先「只检查」出报告，再从菜单「工具 → 直接修复」动手。',
         '  菜单「工具 → 只出取证报告」= 只取证，不自动修。',
         '',
         '可以不插设备直接跑吗',
@@ -1120,7 +1127,7 @@ function Get-AboutLines {
         '',
         '用途',
         '  修好插上后认不出来的 USB / 串口设备，同时保住生产需要的固定 COM 号。',
-        '  点一次「一键修复」，所有能自动处理的项它自己全部做完。',
+        '  点一次「一键诊断修复」，所有能自动处理的项它自己全部做完。',
         '',
         '能处理的问题（全部自动修复，不用逐项点）',
         '  · 设备安装策略禁止安装新设备（老设备能用、新设备一律不行）',
@@ -1284,17 +1291,19 @@ function Invoke-Probe([switch]$AutoFix) {
 
     # ---------- 取证发现可修问题 → 立刻接着修（首页「诊断修复」按钮走这条路） ----------
     if (-not $AutoFix) { return }
-    if ($verdict -ne 'FIXABLE') {
-        if ($verdict -ne '') { Add-LogLine (T 'log.probe.skip') 'info' }
-        return
-    }
     $target = Get-TargetPort
     $scope  = Get-Scope
     $sn     = CF-ScopeName $scope (Get-IncludeHid)
     Add-LogLine '' 'info'
     Add-LogLine (T 'log.probe.autofix') 'info'
-    $body = (Fmt 'd.auto.body' @{ v = (T 'log.probe.verdict.fix'); s = $sn; t = $target })
-    $ans = [System.Windows.Forms.MessageBox]::Show($body, (T 'd.auto.title'), 'YesNo', 'Question')
+    if ($verdict -eq 'FIXABLE') {
+        $body = (Fmt 'd.auto.body' @{ v = (T 'log.probe.verdict.fix'); s = $sn; t = $target })
+    } else {
+        # 没判出具体原因（多半是设备没插或压根没被枚举）：不拦着，照样给一次「清场」
+        $body = (Fmt 'd.auto.body2' @{ v = (T 'log.probe.verdict.hw'); s = $sn; t = $target })
+    }
+    $ttl = $(if ($verdict -eq 'FIXABLE') { T 'd.auto.title' } else { T 'd.auto.title2' })
+    $ans = [System.Windows.Forms.MessageBox]::Show($body, $ttl, 'YesNo', 'Question')
     if ($ans -ne 'Yes') {
         Add-LogLine (T 'log.probe.cancel') 'warn'
         return
@@ -1375,7 +1384,7 @@ function Show-QuickHealth {
 }
 
 # =====================================================================
-#  一键修复
+#  直接修复（菜单「工具 → 直接修复」）
 # =====================================================================
 function Invoke-FixCore([int]$target, [string]$scope) {
     $sn = CF-ScopeName $scope (Get-IncludeHid)
@@ -1442,7 +1451,7 @@ function Invoke-FixCore([int]$target, [string]$scope) {
     Set-Busy $false
 }
 
-$btnFix.Add_Click({
+$mFix.Add_Click({
     $target = Get-TargetPort
     $scope = Get-Scope
     $sn = CF-ScopeName $scope (Get-IncludeHid)
