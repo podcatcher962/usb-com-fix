@@ -31,13 +31,10 @@ if (-not (CF-IsAdmin)) {
         try {
             $a = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -Elevated'
             if ($Lang -ne '') { $a += ' -Lang ' + $Lang }
-            # 提权后的新进程也别再弹一个黑框；万一系统不接受这个组合，就退回普通启动
-            # （界面自己的 Hide-ConsoleWindow 仍会把窗口藏起来）。
-            try {
-                Start-Process -FilePath 'powershell.exe' -ArgumentList $a -Verb RunAs -WindowStyle Hidden -ErrorAction Stop | Out-Null
-            } catch {
-                Start-Process -FilePath 'powershell.exe' -ArgumentList $a -Verb RunAs | Out-Null
-            }
+            # 只用 -Verb RunAs，不和 -WindowStyle 混用；发起提权的这个进程也不能是
+            # 隐藏状态，否则 UAC 窗口会落在后台，表现成「双击没反应」。
+            # 提权后新开的那个控制台，由界面自己的 Hide-ConsoleWindow 藏掉。
+            Start-Process -FilePath 'powershell.exe' -ArgumentList $a -Verb RunAs -ErrorAction Stop | Out-Null
             exit
         } catch {
             [System.Windows.Forms.MessageBox]::Show(
