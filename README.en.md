@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <sub>Unzip -> double-click the .bat -> approve UAC -> click "Diagnose" (diagnosis + repair in one go)</sub>
+  <sub>Unzip -> double-click the .bat -> approve UAC -> click "Diagnose & Fix" (diagnosis + repair in one go)</sub>
 </p>
 
 <p align="center">
@@ -66,7 +66,7 @@ It is not a "cleanup utility" - cleanup is only the means. **The goal is getting
 
 ## The seven steps
 
-One click on "One-click fix" runs these in order:
+"Diagnose & Fix" (or menu Tools -> Repair directly, which skips the diagnosis) runs these in order:
 
 | # | Step | What it does |
 |---|---|---|
@@ -93,7 +93,7 @@ Whatever the scope, keyboards, mice, audio, cameras, NICs, printers, hubs and co
 protected and never deleted.
 
 > Pure USB devices (no COM port) are covered too: steps 5 and 7 skip themselves, steps 2-4 and 6
-> still apply. To judge whether it can be fixed, click **Diagnose** and read section 7:
+> still apply. To judge whether it can be fixed, click **Diagnose & Fix** and read section 7:
 > a `FAILURE(0x...)` for that VID/PID means the install chain is blocked (fixable); no install
 > attempt at all means the device was never enumerated (hardware/descriptor level, out of scope).
 
@@ -150,12 +150,12 @@ This tool follows the logic of the official path:
 1. Unzip, double-click "请双击这个-USB串口一键修复.bat"
 2. Approve the UAC prompt (admin rights are required to modify device records)
 3. Plug in the device that is not detected, and keep it plugged in
-4. Click "Diagnose" - read-only diagnosis first, then repair if a fixable cause is found
+4. Click "Diagnose & Fix" - read-only diagnosis first, then repair if a fixable cause is found
 5. When asked whether to reboot, click Yes
 6. After rebooting, plug in a new device and see whether it is detected
 ```
 
-**"Diagnose" is the second button on the main window.** It runs the read-only deep diagnosis
+**"Diagnose & Fix" is the second button on the main window.** It runs the read-only deep diagnosis
 first, reads a machine-readable `[VERDICT]` line at the end of the report, and decides on its own
 whether to continue:
 
@@ -164,7 +164,12 @@ whether to continue:
 | **Fixable** | install policy blocks new devices / the last install ended in `FAILURE(0x...)` / unknown devices present / leftover class filters / "install failed" flags | asks once (default button is Yes), then repairs immediately |
 | **Not enumerated** | no unknown device at all and no log entry for that device | **report only, nothing is changed** - that case is port / cable / power |
 
-To get a report without letting it touch anything: menu **Tools -> Diagnosis report only**.
+The **Tools** menu holds two extra entries for finer control:
+
+- **Repair directly (skip diagnosis)** - skip the ~20 s diagnosis and run the seven steps; handy for repeated repairs
+- **Diagnosis report only** - diagnose and write the report, change nothing
+
+The main window deliberately keeps **one** repair entry, so nobody has to wonder which button to press.
 
 **No device needs to be plugged in beforehand.** Without a device, steps 1-6 still run as a
 "clear the field" pass; with a device plugged in, step 7 is added.
@@ -175,7 +180,7 @@ To get a report without letting it touch anything: menu **Tools -> Diagnosis rep
 Plug in a new device
   ├─ Detected, port is already the target   -> done, back to production
   ├─ Detected, port is wrong                -> turn on "Auto-pin", fixed within 2 seconds
-  └─ Still not detected at all              -> click "Diagnose"; if it still fails, send the report
+  └─ Still not detected at all              -> click "Diagnose & Fix"; if it still fails, send the report
 ```
 
 ---
@@ -268,7 +273,7 @@ Written to the desktop automatically:
 
 | File | When |
 |---|---|
-| `Device-Check-Report.txt` | Refreshed after every "Check only" or "One-click fix" |
+| `Device-Check-Report.txt` | Refreshed after "Check only", "Diagnose & Fix" or "Repair directly" |
 | `USB-Fix-Error-Report.txt` | On error, with line numbers, call stack and operation log |
 | `USB-Not-Detected-Report.txt` | Only when the program cannot even open its window |
 
@@ -277,9 +282,9 @@ models, system-level status, and the per-step result of the run.
 
 ---
 
-## Diagnose / Deep inspection
+## Diagnose & Fix / Deep inspection
 
-**Main-window button "Diagnose"** = deep diagnosis + immediate repair when a fixable cause is found,
+**Main-window button "Diagnose & Fix"** = deep diagnosis + immediate repair when a fixable cause is found,
 in a single click.
 **Menu "Tools -> Diagnosis report only"** = diagnose without repairing (when you only want a report).
 
