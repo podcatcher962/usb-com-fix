@@ -1,4 +1,4 @@
-# USB / COM Port One-Click Fix
+﻿# USB / COM Port One-Click Fix
 
 <p align="center">
   <a href="README.md">简体中文</a> &nbsp;|&nbsp; <b>English</b>
@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <sub>Unzip -> double-click the .bat -> approve UAC -> "Check only" -> "One-click fix"</sub>
+  <sub>Unzip -> double-click the .bat -> approve UAC -> click "Diagnose" (diagnosis + repair in one go)</sub>
 </p>
 
 <p align="center">
@@ -93,7 +93,7 @@ Whatever the scope, keyboards, mice, audio, cameras, NICs, printers, hubs and co
 protected and never deleted.
 
 > Pure USB devices (no COM port) are covered too: steps 5 and 7 skip themselves, steps 2-4 and 6
-> still apply. To judge whether it can be fixed, run **Tools -> Deep inspection** and read section 7:
+> still apply. To judge whether it can be fixed, click **Diagnose** and read section 7:
 > a `FAILURE(0x...)` for that VID/PID means the install chain is blocked (fixable); no install
 > attempt at all means the device was never enumerated (hardware/descriptor level, out of scope).
 
@@ -149,11 +149,22 @@ This tool follows the logic of the official path:
 ```
 1. Unzip, double-click "请双击这个-USB串口一键修复.bat"
 2. Approve the UAC prompt (admin rights are required to modify device records)
-3. Click "Check only" first (read-only, changes nothing)
-4. Click "One-click fix"
+3. Plug in the device that is not detected, and keep it plugged in
+4. Click "Diagnose" - read-only diagnosis first, then repair if a fixable cause is found
 5. When asked whether to reboot, click Yes
 6. After rebooting, plug in a new device and see whether it is detected
 ```
+
+**"Diagnose" is the second button on the main window.** It runs the read-only deep diagnosis
+first, reads a machine-readable `[VERDICT]` line at the end of the report, and decides on its own
+whether to continue:
+
+| Verdict | Basis | What the tool does |
+|---|---|---|
+| **Fixable** | install policy blocks new devices / the last install ended in `FAILURE(0x...)` / unknown devices present / leftover class filters / "install failed" flags | asks once (default button is Yes), then repairs immediately |
+| **Not enumerated** | no unknown device at all and no log entry for that device | **report only, nothing is changed** - that case is port / cable / power |
+
+To get a report without letting it touch anything: menu **Tools -> Diagnosis report only**.
 
 **No device needs to be plugged in beforehand.** Without a device, steps 1-6 still run as a
 "clear the field" pass; with a device plugged in, step 7 is added.
@@ -164,7 +175,7 @@ This tool follows the logic of the official path:
 Plug in a new device
   ├─ Detected, port is already the target   -> done, back to production
   ├─ Detected, port is wrong                -> turn on "Auto-pin", fixed within 2 seconds
-  └─ Still not detected at all              -> Tools -> Deep inspection, send the report
+  └─ Still not detected at all              -> click "Diagnose"; if it still fails, send the report
 ```
 
 ---
@@ -266,10 +277,14 @@ models, system-level status, and the per-step result of the run.
 
 ---
 
-## Deep inspection (read-only)
+## Diagnose / Deep inspection
 
-Menu **Tools -> Deep inspection**. **It changes nothing**; the only write is a temporary registry key
-that is deleted immediately.
+**Main-window button "Diagnose"** = deep diagnosis + immediate repair when a fixable cause is found,
+in a single click.
+**Menu "Tools -> Diagnosis report only"** = diagnose without repairing (when you only want a report).
+
+The diagnosis itself is **read-only**: it changes no setting and deletes no record; the only write is a
+temporary registry key that is deleted immediately.
 
 Run it with the undetected device plugged in. Ten sections:
 
