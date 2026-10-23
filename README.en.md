@@ -14,8 +14,8 @@
 
 <p align="center">
   <b>Direct link:</b><br>
-  <a href="https://github.com/podcatcher962/usb-com-fix/releases/download/v3.0.0/usb-com-fix-v3.0.0.zip">
-    https://github.com/podcatcher962/usb-com-fix/releases/download/v3.0.0/usb-com-fix-v3.0.0.zip
+  <a href="https://github.com/podcatcher962/usb-com-fix/releases/download/v3.2.0/usb-com-fix-v3.2.0.zip">
+    https://github.com/podcatcher962/usb-com-fix/releases/download/v3.2.0/usb-com-fix-v3.2.0.zip
   </a>
 </p>
 
@@ -149,9 +149,10 @@ This tool follows the logic of the official path:
 ```
 1. Unzip, double-click "请双击这个-USB串口一键修复.bat"
 2. Approve the UAC prompt (admin rights are required to modify device records)
-3. Plug in the device that is not detected, and keep it plugged in
-4. Click "Diagnose & Fix" - read-only diagnosis first, then repair if a fixable cause is found
-5. When asked whether to reboot, click Yes
+3. Plug in the device that is not detected, and keep it plugged in (**plug in first, then click**)
+4. Click "Diagnose & Fix" - read-only diagnosis first, then repair if a fixable cause is found (no second prompt)
+5. When asked whether to reboot, click Yes (if you pick No, the bar above the buttons turns
+   orange and stays there with a "Reboot now" button until you actually reboot)
 6. After rebooting, plug in a new device and see whether it is detected
 ```
 
@@ -161,8 +162,15 @@ whether to continue:
 
 | Verdict | Basis | What the tool does |
 |---|---|---|
-| **Fixable** | install policy blocks new devices / the last install ended in `FAILURE(0x...)` / unknown devices present / leftover class filters / "install failed" flags | asks once (default button is Yes), then repairs immediately |
+| **Fixable** | install policy blocks new devices / the last install ended in `FAILURE(0x...)` / unknown devices present / leftover class filters / "install failed" flags | **repairs immediately**, no second prompt (a snapshot is still taken first) |
 | **Not enumerated** | no unknown device at all and no log entry for that device | **report only, nothing is changed** - that case is port / cable / power |
+
+**Plug the device in before clicking.** A highlighted bar right above the buttons keeps reminding
+of this; once a device is detected it turns green with the device count. The reason is practical:
+the most important diagnosis item is "did Windows see this device at all", and with nothing plugged
+in that item is simply empty.
+
+You can still run it with nothing plugged in (a plain cleanup - steps 1-6), the log will just say so.
 
 The **Tools** menu holds two extra entries for finer control:
 
@@ -333,7 +341,7 @@ usb-com-fix/
 python build.py
 ```
 
-Produces `USB串口一键修复-发给生产部/` and the matching `.zip`.
+Produces `USB串口一键修复/` and the matching `.zip` (rename via the `ROOT` constant if you want).
 `build.py` converts `.ps1` to **UTF-8 with BOM + CRLF** and `.bat` to **GBK** - PowerShell 5.1 and
 cmd have different encoding requirements, and neither step can be skipped.
 

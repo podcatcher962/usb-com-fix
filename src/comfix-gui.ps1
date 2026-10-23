@@ -94,6 +94,12 @@ $C_BLUE    = [System.Drawing.Color]::FromArgb(21, 101, 192)
 $C_GRAY    = [System.Drawing.Color]::FromArgb(96, 125, 139)
 $C_RED     = [System.Drawing.Color]::FromArgb(198, 40, 40)
 $C_AMBER   = [System.Drawing.Color]::FromArgb(190, 110, 0)
+# 提示条配色：黄底＝「请先插设备」，绿底＝「已插着，可以点了」
+$C_HINT_BG    = [System.Drawing.Color]::FromArgb(255, 244, 214)
+$C_HINT_FG    = [System.Drawing.Color]::FromArgb(138, 82, 0)
+$C_HINT_OK_BG = [System.Drawing.Color]::FromArgb(226, 242, 229)
+# 修完没重启：橙底，一直挂着直到真的重启
+$C_REBOOT_BG  = [System.Drawing.Color]::FromArgb(255, 224, 178)
 
 # =====================================================================
 #  语言
@@ -135,9 +141,15 @@ CF-SetLang $script:LANG
 $script:TXT = @{
     'zh' = @{
         'app.title'   = 'USB / 串口 一键修复'
-        'app.sub'     = '让插上认不出的新设备重新被识别，并固定到你指定的串口号'
+        'app.sub'     = '让插上认不出的新设备重新被识别；串口设备会额外把端口号固定成你选的号'
         'app.author'  = '© 永远的兰兰'
-        'lbl.port'    = '固定到'
+        'hint.step'   = '① 先把那台认不出的设备插上，并保持插着　→　② 再点下面的「一键诊断修复」'
+        'hint.plugged'= '✓ 已插着 {n} 台设备，现在可以点下面的「一键诊断修复」了'
+        'hint.reboot'  = '⚠ 已经修好了，但还没重启 —— 不重启不生效，新设备可能照样认不出'
+        'btn.reboot'   = '立即重启'
+        'd.reboot.t'   = '确认重启'
+        'd.reboot.b'   = '现在重启电脑吗？重启前请先保存其它工作的内容。'
+        'lbl.port'    = '串口设备固定为'
         'lbl.scope'   = '修复范围'
         'scope.0'     = '串口设备（COM 口）'
         'scope.1'     = '厂商自定义设备'
@@ -159,6 +171,7 @@ $script:TXT = @{
         'menu.tools'  = '工具'
         'menu.fix'    = '直接修复（跳过取证）'
         'menu.probe'  = '只出取证报告（不自动修）'
+        'log.probe.nodev'  = '提示：现在没检测到插着的串口设备。如果设备已经插好、只是系统认不出来，那是正常的，照样继续取证。'
         'log.probe.run'    = '深度取证中…（只读，不改任何设置）'
         'log.probe.done'   = '取证完成，报告在桌面：USB认不出-取证报告.txt'
         'log.probe.nofile' = '找不到取证脚本 usbprobe.ps1，程序目录不完整。'
@@ -167,10 +180,13 @@ $script:TXT = @{
         'log.probe.verdict.hw'  = '判定：系统压根没枚举到设备，软件层修不了（先查端口 / 线材 / 供电）'
         'log.probe.verdict.unk' = '判定：读不到设备列表，请用管理员身份重跑'
         'log.probe.autofix'     = '按「一键诊断修复」的约定，接着立即修复'
+        'log.probe.autofix2'    = '判定可修 → 立即修复（不再多问一次；修完会问要不要重启）'
         'log.probe.skip'        = '没有可自动修复的项目，只出报告，不动系统'
         'log.probe.cancel'      = '已取消修复（只保留了报告）'
         'log.probe.err'         = '取证出错：'
         'st.probe.err'          = '取证出错'
+        'st.probe.run'          = '取证中…'
+        'st.probe.done'         = '取证完成'
         'd.auto.title'          = '开始修复？'
         'd.auto.title2'         = '没有发现明确原因，还修吗？'
         'd.auto.body'           = '取证已完成，完整报告在桌面。{n}{n}判定：{v}{n}{n}现在按同一套流程修复吗？{n}范围：{s}{n}目标串口号：COM{t}{n}{n}（修复前会自动留底，随时能还原）'
@@ -178,17 +194,17 @@ $script:TXT = @{
         'menu.zh'     = '中文'
         'menu.en'     = 'English'
         'st.ready'    = '就绪'
-        'st.fixing'   = '正在修复…'
-        'st.fixdone'  = '修复完成，请重启电脑'
-        'st.fixerr'   = '修复出错（已生成出错报告）'
-        'st.checking' = '正在检查…'
+        'st.fixing'   = '修复中…'
+        'st.fixdone'  = '修复完成'
+        'st.fixerr'   = '修复出错'
+        'st.checking' = '检查中…'
         'st.checkdone'= '检查完成'
-        'st.restoring'= '正在还原…'
-        'st.restored' = '还原完成，请重启电脑'
-        'st.restoreerr'='还原出错（已生成出错报告）'
-        'st.watching' = '守护中，新设备自动固定到 COM{n}'
-        'st.watchoff' = '守护已停止'
-        'st.watcherr' = '守护出错，已停止'
+        'st.restoring'= '还原中…'
+        'st.restored' = '还原完成'
+        'st.restoreerr'='还原出错'
+        'st.watching' = '守护中 COM{n}'
+        'st.watchoff' = '守护已停'
+        'st.watcherr' = '守护出错'
         'l.ready1'    = '就绪。本工具主要用来修复「插上认不出的新设备」。'
         'l.ready2'    = '建议顺序：插上设备，点「一键诊断修复」，按提示重启。'
         'l.pool'      = '号池占用 {a} / 256，剩余 {b}，最高 COM{c}'
@@ -270,9 +286,15 @@ $script:TXT = @{
     }
     'en' = @{
         'app.title'   = 'USB / Serial Port Fix'
-        'app.sub'     = 'Make unrecognized new devices detectable again, pinned to your COM port'
+        'app.sub'     = 'Make unrecognized new devices detectable again; serial devices also get pinned to your COM port'
         'app.author'  = '© Lanlan Eternal'
-        'lbl.port'    = 'Pin to'
+        'hint.step'   = '1. Plug the device in and keep it plugged in　→　2. Then click "Diagnose & Fix" below'
+        'hint.plugged'= 'Plugged in: {n} device(s)　→　now click "Diagnose & Fix" below'
+        'hint.reboot'  = '⚠ Done - but reboot is required, or nothing takes effect'
+        'btn.reboot'   = 'Reboot now'
+        'd.reboot.t'   = 'Confirm reboot'
+        'd.reboot.b'   = 'Reboot now? Save your other work first.'
+        'lbl.port'    = 'Pin serial port to'
         'lbl.scope'   = 'Scope'
         'scope.0'     = 'Serial ports (COM)'
         'scope.1'     = 'Vendor-specific devices'
@@ -294,6 +316,7 @@ $script:TXT = @{
         'menu.tools'  = 'Tools'
         'menu.fix'    = 'Repair directly (skip diagnosis)'
         'menu.probe'  = 'Diagnosis report only (no repair)'
+        'log.probe.nodev'  = 'Note: no serial device is currently detected. If it is already plugged in but Windows does not see it, that is expected - continuing anyway.'
         'log.probe.run'    = 'Running deep diagnosis... (read-only, changes nothing)'
         'log.probe.done'   = 'Done. Report on Desktop: USB-Not-Detected-Report.txt'
         'log.probe.nofile' = 'usbprobe.ps1 not found - the program folder is incomplete.'
@@ -302,10 +325,13 @@ $script:TXT = @{
         'log.probe.verdict.hw'  = 'Verdict: Windows never enumerated the device - software cannot fix it (check port / cable / power first)'
         'log.probe.verdict.unk' = 'Verdict: device list unreadable - please run as Administrator'
         'log.probe.autofix'     = 'As promised by "Diagnose & Fix", repairing right away'
+        'log.probe.autofix2'    = 'Fixable -> repairing now (no second prompt; you will be asked about rebooting)'
         'log.probe.skip'        = 'Nothing auto-fixable - report only, system untouched'
         'log.probe.cancel'      = 'Repair cancelled (the report was kept)'
         'log.probe.err'         = 'Diagnosis error: '
         'st.probe.err'          = 'Diagnosis failed'
+        'st.probe.run'          = 'Diagnosing...'
+        'st.probe.done'         = 'Diagnosis done'
         'd.auto.title'          = 'Start the repair?'
         'd.auto.title2'         = 'No clear cause found - run it anyway?'
         'd.auto.body'           = 'Diagnosis finished; the full report is on the Desktop.{n}{n}Verdict: {v}{n}{n}Repair now with the same pipeline?{n}Scope: {s}{n}Target COM port: COM{t}{n}{n}(A snapshot is taken first, so it can always be rolled back)'
@@ -314,16 +340,16 @@ $script:TXT = @{
         'menu.en'     = 'English'
         'st.ready'    = 'Ready'
         'st.fixing'   = 'Repairing...'
-        'st.fixdone'  = 'Done - please reboot'
-        'st.fixerr'   = 'Failed (error report saved)'
+        'st.fixdone'  = 'Repaired'
+        'st.fixerr'   = 'Repair failed'
         'st.checking' = 'Checking...'
-        'st.checkdone'= 'Check complete'
+        'st.checkdone'= 'Check done'
         'st.restoring'= 'Restoring...'
-        'st.restored' = 'Restored - please reboot'
-        'st.restoreerr'='Restore failed (error report saved)'
-        'st.watching' = 'Watching - new devices auto-pinned to COM{n}'
-        'st.watchoff' = 'Watch stopped'
-        'st.watcherr' = 'Watch failed and stopped'
+        'st.restored' = 'Restored'
+        'st.restoreerr'='Restore failed'
+        'st.watching' = 'Watching COM{n}'
+        'st.watchoff' = 'Watch off'
+        'st.watcherr' = 'Watch failed'
         'l.ready1'    = 'Ready. Main job: fix new devices that are not detected when plugged in.'
         'l.ready2'    = 'Suggested order: plug in the device, click "Diagnose & Fix", then reboot when asked.'
         'l.pool'      = 'Port pool {a} / 256 in use, {b} free, highest COM{c}'
@@ -531,7 +557,7 @@ function Save-DeskReport {
 #  窗体
 # =====================================================================
 $form = New-Object System.Windows.Forms.Form
-$form.ClientSize = New-Object System.Drawing.Size(720, 522)
+$form.ClientSize = New-Object System.Drawing.Size(720, 542)
 $form.StartPosition = 'CenterScreen'
 $form.BackColor = $C_BG
 $form.ForeColor = $C_TEXT
@@ -606,33 +632,53 @@ $lbSub.Location = New-Object System.Drawing.Point(26, 74)
 $lbSub.Size = New-Object System.Drawing.Size(670, 20)
 $form.Controls.Add($lbSub)
 
-# ---------- 目标号 + 范围 ----------
-$lbPort = New-Object System.Windows.Forms.Label
-$lbPort.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9, [System.Drawing.FontStyle]::Bold)
-$lbPort.Location = New-Object System.Drawing.Point(26, 106)
-$lbPort.Size = New-Object System.Drawing.Size(58, 22)
-$form.Controls.Add($lbPort)
+# ---------- 提示条：先说插设备，再说点按钮（全界面最要紧的一句话） ----------
+# 取证里最关键的一项「系统到底有没有看到这台设备」，设备不在场就是空的；
+# 所以这句话不能只写在日志里，得一直横在按钮上方，黄底加粗。
+$lbHint = New-Object System.Windows.Forms.Label
+$lbHint.Location = New-Object System.Drawing.Point(24, 396)
+$lbHint.Size = New-Object System.Drawing.Size(672, 30)
+$lbHint.TextAlign = 'MiddleLeft'
+# Label 默认 UseMnemonic=true，会把「&」当成助记符吃掉 ——
+# 英文文案里的 "Diagnose & Fix" 就变成了 "Diagnose  Fix"。关掉它。
+$lbHint.UseMnemonic = $false
+$lbHint.BorderStyle = 'FixedSingle'
+$lbHint.Padding = New-Object System.Windows.Forms.Padding(10, 0, 0, 0)
+$lbHint.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9.5, [System.Drawing.FontStyle]::Bold)
+$lbHint.BackColor = $C_HINT_BG
+$lbHint.ForeColor = $C_HINT_FG
+$form.Controls.Add($lbHint)
 
-$cbPort = New-Object System.Windows.Forms.ComboBox
-$cbPort.DropDownStyle = 'DropDownList'
-$cbPort.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10)
-$cbPort.Location = New-Object System.Drawing.Point(84, 103)
-$cbPort.Size = New-Object System.Drawing.Size(88, 26)
-for ($i = 3; $i -le 30; $i++) { [void]$cbPort.Items.Add('COM' + $i) }
-$cbPort.SelectedIndex = 0
-$form.Controls.Add($cbPort)
+# 修完点「否」以后，这条横条会变成橙色“待重启”，右边挂一个直接重启的按钮，
+# 免得人关了弹窗就忘了重启（不重启，改了的东西不生效，等于白修）。
+$btnReboot = New-Object System.Windows.Forms.Button
+$btnReboot.Location = New-Object System.Drawing.Point(572, 398)
+$btnReboot.Size = New-Object System.Drawing.Size(120, 26)
+$btnReboot.FlatStyle = 'Flat'
+$btnReboot.FlatAppearance.BorderSize = 0
+$btnReboot.BackColor = $C_AMBER
+$btnReboot.ForeColor = [System.Drawing.Color]::White
+$btnReboot.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9, [System.Drawing.FontStyle]::Bold)
+$btnReboot.Cursor = 'Hand'
+$btnReboot.Visible = $false
+$form.Controls.Add($btnReboot)
+$btnReboot.BringToFront()
 
+# ---------- 修复范围（左，主要功能）+ 串口号（右，只管串口设备） ----------
+# 顺序有意为之：左边第一眼就是「修复范围」，它决定这次动哪些设备，是主功能；
+# 「串口设备端口号固定为」放右边，标签里明写「串口设备」四个字 ——
+# 免得有人以为纯 USB / HID 设备也会被塞到一个 COM 号上（其实不会，有硬闸）。
 $lbScope = New-Object System.Windows.Forms.Label
 $lbScope.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9, [System.Drawing.FontStyle]::Bold)
-$lbScope.Location = New-Object System.Drawing.Point(190, 106)
-$lbScope.Size = New-Object System.Drawing.Size(62, 22)
+$lbScope.Location = New-Object System.Drawing.Point(26, 106)
+$lbScope.Size = New-Object System.Drawing.Size(58, 22)
 $form.Controls.Add($lbScope)
 
 $cbScope = New-Object System.Windows.Forms.ComboBox
 $cbScope.DropDownStyle = 'DropDownList'
 $cbScope.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9.5)
-$cbScope.Location = New-Object System.Drawing.Point(254, 103)
-$cbScope.Size = New-Object System.Drawing.Size(198, 26)
+$cbScope.Location = New-Object System.Drawing.Point(86, 103)
+$cbScope.Size = New-Object System.Drawing.Size(186, 26)
 [void]$cbScope.Items.Add('')
 [void]$cbScope.Items.Add('')
 [void]$cbScope.Items.Add('')
@@ -640,11 +686,29 @@ $cbScope.Size = New-Object System.Drawing.Size(198, 26)
 $cbScope.SelectedIndex = 2
 $form.Controls.Add($cbScope)
 
+$lbPort = New-Object System.Windows.Forms.Label
+$lbPort.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 8.5, [System.Drawing.FontStyle]::Bold)
+$lbPort.Location = New-Object System.Drawing.Point(282, 107)
+$lbPort.Size = New-Object System.Drawing.Size(112, 20)
+$form.Controls.Add($lbPort)
+
+$cbPort = New-Object System.Windows.Forms.ComboBox
+$cbPort.DropDownStyle = 'DropDownList'
+$cbPort.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10)
+$cbPort.Location = New-Object System.Drawing.Point(400, 103)
+$cbPort.Size = New-Object System.Drawing.Size(72, 26)
+for ($i = 3; $i -le 30; $i++) { [void]$cbPort.Items.Add('COM' + $i) }
+$cbPort.SelectedIndex = 0
+$form.Controls.Add($cbPort)
+
 $lbStatus = New-Object System.Windows.Forms.Label
-$lbStatus.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+# 状态栏只放「就绪 / 取证中… / 修复完成」这类短词，详细内容在日志里。
+# 宽度给到 216px、字号 8.5，长一点也装得下；单行不换行，MiddleRight 靠右对齐。
+$lbStatus.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 8.5)
 $lbStatus.ForeColor = $C_SUB
-$lbStatus.Location = New-Object System.Drawing.Point(458, 108)
-$lbStatus.Size = New-Object System.Drawing.Size(238, 22)
+$lbStatus.Location = New-Object System.Drawing.Point(480, 108)
+$lbStatus.Size = New-Object System.Drawing.Size(216, 20)
+$lbStatus.AutoSize = $false
 $lbStatus.TextAlign = 'MiddleRight'
 $form.Controls.Add($lbStatus)
 
@@ -671,8 +735,36 @@ $bar.Maximum = 100
 $bar.Value = 0
 $form.Controls.Add($bar)
 
+# 提示条的两种状态：黄底＝请先插设备；绿底＝已经插着 N 台了。
+# 数字来自 Show-QuickHealth 里那次体检（CF-HealthCheck 的 Online），不额外扫一遍设备。
+$script:HintOnline  = -1
+$script:NeedReboot  = $false
+
+function Set-HintText {
+    # 待重启优先：修完没重启这件事必须一直挂在屏幕上，不能被「只检查」刷掉
+    if ($script:NeedReboot) {
+        $lbHint.Text      = (T 'hint.reboot')
+        $lbHint.BackColor = $C_REBOOT_BG
+        $lbHint.ForeColor = $C_RED
+        $lbHint.Size       = New-Object System.Drawing.Size(540, 30)
+        $btnReboot.Text    = (T 'btn.reboot')
+        $btnReboot.Visible = $true
+        return
+    }
+    $lbHint.Size       = New-Object System.Drawing.Size(672, 30)
+    $btnReboot.Visible = $false
+    if ($script:HintOnline -gt 0) {
+        $lbHint.Text      = (Fmt 'hint.plugged' @{ n = $script:HintOnline })
+        $lbHint.BackColor = $C_HINT_OK_BG
+        $lbHint.ForeColor = $C_GREEN
+    } else {
+        $lbHint.Text      = (T 'hint.step')
+        $lbHint.BackColor = $C_HINT_BG
+        $lbHint.ForeColor = $C_HINT_FG
+    }
+}
+
 function Set-Status([string]$t, [string]$color = '') {
-    $lbStatus.Text = (T 'st.ready') + ':' + $t
     if ($script:LANG -eq 'zh') { $lbStatus.Text = '状态：' + $t } else { $lbStatus.Text = 'Status: ' + $t }
     if ($color -eq 'ok')   { $lbStatus.ForeColor = $C_GREEN }
     elseif ($color -eq 'err') { $lbStatus.ForeColor = $C_RED }
@@ -695,6 +787,7 @@ function Set-Busy([bool]$b) {
     $btnProbe.Enabled = -not $b
     $btnCheck.Enabled = -not $b
     $btnUndo.Enabled  = -not $b
+    $btnReboot.Enabled = -not $b
     $cbPort.Enabled   = -not $b
     $cbScope.Enabled  = -not $b
     $mZh.Enabled      = -not $b
@@ -725,7 +818,7 @@ function Get-IncludeHid {
 # ---------- 按钮 ----------
 function New-Btn($x, $w, $color) {
     $b = New-Object System.Windows.Forms.Button
-    $b.Location = New-Object System.Drawing.Point($x, 410)
+    $b.Location = New-Object System.Drawing.Point($x, 432)
     $b.Size = New-Object System.Drawing.Size($w, 44)
     $b.FlatStyle = 'Flat'
     $b.FlatAppearance.BorderSize = 0
@@ -745,13 +838,13 @@ $form.Controls.AddRange(@($btnProbe, $btnCheck, $btnWatch, $btnUndo))
 $lbFoot = New-Object System.Windows.Forms.Label
 $lbFoot.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 8.5)
 $lbFoot.ForeColor = $C_SUB
-$lbFoot.Location = New-Object System.Drawing.Point(26, 470)
+$lbFoot.Location = New-Object System.Drawing.Point(26, 490)
 $lbFoot.Size = New-Object System.Drawing.Size(672, 20)
 $form.Controls.Add($lbFoot)
 
 $lbAdmin = New-Object System.Windows.Forms.Label
 $lbAdmin.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 8.5)
-$lbAdmin.Location = New-Object System.Drawing.Point(26, 492)
+$lbAdmin.Location = New-Object System.Drawing.Point(26, 512)
 $lbAdmin.Size = New-Object System.Drawing.Size(672, 20)
 if ((CF-IsAdmin) -or ($Shot -ne '') -or $SelfTest) {
     $lbAdmin.ForeColor = $C_GREEN
@@ -818,6 +911,7 @@ function Apply-Lang {
         $mEn.ForeColor = $C_BLUE
     }
 
+    Set-HintText
     Set-Status (T 'st.ready')
 }
 
@@ -870,7 +964,9 @@ function Get-HelpLines {
             '       fixable cause it goes straight on to repair - one click, no second step.',
             '       If Windows never enumerated the device, it only writes the report',
             '       and changes nothing (that case is port / cable / power, not Windows).',
-            '  4. Reboot when asked',
+            '  4. Reboot when asked. If you pick No, the bar above the buttons',
+            '     turns orange and stays there with a "Reboot now" button until',
+            '     you do reboot - until then nothing you changed takes effect.',
             '  5. Plug in a new device and see whether it is detected',
             '',
             '  Prefer to look first? The old order still works:',
@@ -922,7 +1018,7 @@ function Get-HelpLines {
             '  - Administrator rights are required',
             '  - Reboot after repair or restore',
             '  - It never touches firmware, chips, the product itself, or production software',
-            '  - Test on ONE machine before rolling out to the whole line'
+            '  - Test on one machine first, then roll it out in small batches'
         )
     }
     return @(
@@ -969,6 +1065,9 @@ function Get-HelpLines {
         '       判出「系统压根没枚举到设备」就只出报告，不动系统 ——',
         '       那种情况属于端口 / 线材 / 供电，修注册表也没用。',
         '  4. 问要不要重启时点「是」',
+        '     点了「否」也别怕忘：按钮上方那条横条会变成橙色「还没重启」，',
+        '     右边挂一个「立即重启」按钮，一直挂着直到真的重启 ——',
+        '     不重启，刚改的东西一律不生效。',
         '  5. 重启后插一台新机器，看认不认',
         '',
         '  想自己先看一眼再决定，也可以按老顺序做：',
@@ -1017,7 +1116,7 @@ function Get-HelpLines {
         '  · 必须用管理员权限运行',
         '  · 修复和还原之后都要重启电脑',
         '  · 不改芯片、不刷固件、不动产品本身和生产软件',
-        '  · 第一次先在一台机上试，别整厂一起推'
+        '  · 第一次先在一台机上试，确认没问题再小批量铺开'
     )
 }
 
@@ -1079,7 +1178,7 @@ function Get-AboutLines {
         return @(
             'USB / USB-Serial Port Fix',
             '',
-            'Version   : 3.0',
+            'Version   : 3.2',
             'Author    : Lanlan Eternal',
             'Platform  : Windows 7 / 8 / 10 / 11, 32-bit and 64-bit',
             'Engine    : PowerShell 5.1 + WinForms (no install, portable)',
@@ -1117,7 +1216,7 @@ function Get-AboutLines {
     return @(
         'USB / 串口 一键修复',
         '',
-        '版本     : 3.0',
+        '版本     : 3.2',
         '作者     : 永远的兰兰',
         '适用系统 : Windows 7 / 8 / 10 / 11，32 位 / 64 位',
         '运行方式 : PowerShell 5.1 + WinForms，免安装、绿色便携',
@@ -1232,9 +1331,10 @@ function Invoke-Probe([switch]$AutoFix) {
     }
     $verdict = ''
     Set-Busy $true
-    Set-Status (T 'log.probe.run') 'run'
+    Set-Status (T 'st.probe.run') 'run'
     Add-LogLine '' 'info'
     Add-LogLine ('====== ' + (T 'log.probe.run') + ' ======') 'info'
+    if ($script:HintOnline -le 0) { Add-LogLine (T 'log.probe.nodev') 'warn' }
     try {
         $desk = ''
         try { $desk = [Environment]::GetFolderPath('Desktop') } catch { $desk = $env:TEMP }
@@ -1274,11 +1374,11 @@ function Invoke-Probe([switch]$AutoFix) {
             elseif ($verdict -eq 'UNKNOWN')  { Add-LogLine (T 'log.probe.verdict.unk') 'warn' }
             Add-LogLine '' 'info'
             Add-LogLine (T 'log.probe.done') 'ok'
-            Set-Status (T 'log.probe.done') 'ok'
+            Set-Status (T 'st.probe.done') 'ok'
             try { Start-Process notepad.exe $f } catch { }
         } else {
             Add-LogLine (T 'log.probe.nofile') 'err'
-            Set-Status (T 'log.probe.nofile') 'err'
+            Set-Status (T 'st.probe.err') 'err'
         }
     } catch {
         Add-LogLine ((T 'log.probe.err') + $_.Exception.Message) 'err'
@@ -1291,16 +1391,26 @@ function Invoke-Probe([switch]$AutoFix) {
     $target = Get-TargetPort
     $scope  = Get-Scope
     $sn     = CF-ScopeName $scope (Get-IncludeHid)
+
+    # 判出「可修」就立刻修，不再弹第二个确认框 ——
+    # 多问一遍反而让人以为「取证跑完了、但它并没修」。
+    # 修复前程序照样自动留底，任何时候都能点「还原上次」退回去。
+    if ($verdict -eq 'FIXABLE') {
+        Add-LogLine '' 'info'
+        Add-LogLine (T 'log.probe.autofix2') 'ok'
+        Invoke-FixCore -target $target -scope $scope
+        return
+    }
+
+    # 没判出具体原因（多半是设备没插着，或压根没被系统枚举）：
+    # 修也修不到点子上，先问一句，愿意的话仍可做一次「清场」。
     Add-LogLine '' 'info'
     Add-LogLine (T 'log.probe.autofix') 'info'
-    if ($verdict -eq 'FIXABLE') {
-        $body = (Fmt 'd.auto.body' @{ v = (T 'log.probe.verdict.fix'); s = $sn; t = $target })
-    } else {
-        # 没判出具体原因（多半是设备没插或压根没被枚举）：不拦着，照样给一次「清场」
-        $body = (Fmt 'd.auto.body2' @{ v = (T 'log.probe.verdict.hw'); s = $sn; t = $target })
-    }
-    $ttl = $(if ($verdict -eq 'FIXABLE') { T 'd.auto.title' } else { T 'd.auto.title2' })
-    $ans = [System.Windows.Forms.MessageBox]::Show($body, $ttl, 'YesNo', 'Question')
+    $vtxt = T 'log.probe.verdict.unk'
+    if ($verdict -eq 'HARDWARE') { $vtxt = T 'log.probe.verdict.hw' }
+    $body = (Fmt 'd.auto.body2' @{ v = $vtxt; s = $sn; t = $target })
+    $ttl  = T 'd.auto.title2'
+    $ans  = [System.Windows.Forms.MessageBox]::Show($body, $ttl, 'YesNo', 'Question')
     if ($ans -ne 'Yes') {
         Add-LogLine (T 'log.probe.cancel') 'warn'
         return
@@ -1310,6 +1420,15 @@ function Invoke-Probe([switch]$AutoFix) {
 
 $mProbe.Add_Click({ Invoke-Probe })
 $btnProbe.Add_Click({ Invoke-Probe })
+
+$btnReboot.Add_Click({
+    if ($script:Busy) {
+        [System.Windows.Forms.MessageBox]::Show((T 'd.stopb'), (T 'd.stop'), 'OK', 'Information') | Out-Null
+        return
+    }
+    $ans = [System.Windows.Forms.MessageBox]::Show((T 'd.reboot.b'), (T 'd.reboot.t'), 'YesNo', 'Question')
+    if ($ans -eq 'Yes') { Restart-Computer -Force }
+})
 
 $mHelp.Add_Click({ Show-TextDialog (T 'hdr.help') (Get-HelpLines) })
 $mDisc.Add_Click({ Show-TextDialog (T 'hdr.disc') (Get-DiscLines) })
@@ -1349,6 +1468,8 @@ function Show-QuickHealth {
     try {
         CF-ResetPresentCache
         $h = CF-HealthCheck
+        $script:HintOnline = $h.Online
+        Set-HintText
         Add-LogLine (Fmt 'l.pool' @{a = $h.Used; b = $h.Free; c = $h.MaxUsed }) 'info'
         Add-LogLine (Fmt 'l.serial' @{a = $h.Online; b = $h.Offline; c = $h.BadFlags }) 'info'
         $dupN = 0
@@ -1420,6 +1541,8 @@ function Invoke-FixCore([int]$target, [string]$scope) {
             Add-LogLine (T 'l.next3') 'info'
         }
         Set-Status (T 'st.fixdone') 'ok'
+        $script:NeedReboot = $true
+        Set-HintText
 
         $rep = ''
         try { $rep = Save-DeskReport 'ok' } catch { }
@@ -1519,6 +1642,8 @@ $btnUndo.Add_Click({
     try {
         CF-Restore $dir | Out-Null
         Set-Status (T 'st.restored') 'ok'
+        $script:NeedReboot = $true
+        Set-HintText
     } catch {
         $raw = Format-ErrText $_
         Add-LogLine (Fmt 'l.errrestore' @{a = $_.Exception.Message }) 'err'
