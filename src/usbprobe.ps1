@@ -10,6 +10,33 @@ param(
     [switch]$NoOpen
 )
 
+# ---- 报告输出目录（2026-11-04 起不再往桌面写，按顺序回退）----
+function Get-ReportDir {
+    $here = ''
+    try { $here = $PSScriptRoot } catch { }
+    if (-not $here) { try { $here = $PSCommandPath } catch { } }
+    $base = $here
+    if ($here -and (Split-Path -Leaf $here) -eq '_program') { $base = Split-Path -Parent $here }
+
+    $cand = New-Object System.Collections.ArrayList
+    if ($env:WB_REPORT_DIR) { [void]$cand.Add($env:WB_REPORT_DIR) }
+    if (Test-Path -LiteralPath 'E:\workbuddy') {
+        $tool = 'USB'
+        if ($base) { $tool = Split-Path -Leaf $base }
+        [void]$cand.Add((Join-Path 'E:\workbuddy\_out' $tool))
+    }
+    if ($base) { [void]$cand.Add((Join-Path $base '报告')) }
+    try { [void]$cand.Add([Environment]::GetFolderPath('Desktop')) } catch { }
+    [void]$cand.Add($env:TEMP)
+
+    foreach ($c in $cand) {
+        if (-not $c) { continue }
+        try { if (-not [System.IO.Directory]::Exists($c)) { [void][System.IO.Directory]::CreateDirectory($c) } } catch { }
+        if ([System.IO.Directory]::Exists($c)) { return $c }
+    }
+    return $env:TEMP
+}
+
 $ErrorActionPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(936) } catch { }
 
@@ -728,9 +755,7 @@ W '--------------------------------------------------'
 # 输出
 # ============================================================
 $text = ($script:L -join "`r`n")
-if ($OutDir -eq '') {
-    try { $OutDir = [Environment]::GetFolderPath('Desktop') } catch { $OutDir = $env:TEMP }
-}
+if ($OutDir -eq '') { $OutDir = Get-ReportDir }
 if (-not (Test-Path $OutDir)) { $OutDir = $env:TEMP }
 $outFile = Join-Path $OutDir $OutName
 $enc = New-Object System.Text.UTF8Encoding($true)

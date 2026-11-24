@@ -1,12 +1,37 @@
 ﻿# =====================================================================
 #  启动失败报告 —— 由 bat 在主程序异常退出时调用
-#  作用：把启动阶段的输出写到桌面，避免「双击闪一下就没了」无从查起
+#  作用：把启动阶段的输出写到报告目录，避免「双击闪一下就没了」无从查起
 # =====================================================================
 param([string]$LogPath = '')
 
-$d = ''
-try { $d = [Environment]::GetFolderPath('Desktop') } catch { }
-if (-not $d -or -not (Test-Path $d)) { $d = $env:USERPROFILE }
+# 报告输出目录（2026-11-04 起不再往桌面写，按顺序回退）
+function Get-ReportDir {
+    $here = ''
+    try { $here = $PSScriptRoot } catch { }
+    if (-not $here) { try { $here = $PSCommandPath } catch { } }
+    $base = $here
+    if ($here -and (Split-Path -Leaf $here) -eq '_program') { $base = Split-Path -Parent $here }
+
+    $cand = New-Object System.Collections.ArrayList
+    if ($env:WB_REPORT_DIR) { [void]$cand.Add($env:WB_REPORT_DIR) }
+    if (Test-Path -LiteralPath 'E:\workbuddy') {
+        $tool = 'USB'
+        if ($base) { $tool = Split-Path -Leaf $base }
+        [void]$cand.Add((Join-Path 'E:\workbuddy\_out' $tool))
+    }
+    if ($base) { [void]$cand.Add((Join-Path $base '报告')) }
+    try { [void]$cand.Add([Environment]::GetFolderPath('Desktop')) } catch { }
+    [void]$cand.Add($env:TEMP)
+
+    foreach ($c in $cand) {
+        if (-not $c) { continue }
+        try { if (-not [System.IO.Directory]::Exists($c)) { [void][System.IO.Directory]::CreateDirectory($c) } } catch { }
+        if ([System.IO.Directory]::Exists($c)) { return $c }
+    }
+    return $env:TEMP
+}
+
+$d = Get-ReportDir
 
 $out = ''
 if ($LogPath -ne '' -and (Test-Path $LogPath)) {
@@ -48,10 +73,10 @@ try {
     Add-Type -AssemblyName System.Windows.Forms | Out-Null
     $nl  = [Environment]::NewLine
     $msg = '程序异常退出，没能打开窗口。' + $nl + $nl +
-           '已在桌面生成：USB修复-启动失败.txt' + $nl +
+           '已生成：USB修复-启动失败.txt' + $nl +
            '请把这个文件发给开发，就能定位是哪一种原因。' + $nl + $nl +
            'The program exited unexpectedly.' + $nl +
-           'A report has been written to the Desktop: USB修复-启动失败.txt'
+           'A report has been written: USB修复-启动失败.txt'
     [void][System.Windows.Forms.MessageBox]::Show(
         $msg,
         'USB / 串口 一键修复 / USB / COM Port Fix',

@@ -14,13 +14,13 @@
 
 <p align="center">
   <b>Direct link:</b><br>
-  <a href="https://github.com/podcatcher962/usb-com-fix/releases/download/v3.2.0/usb-com-fix-v3.2.0.zip">
-    https://github.com/podcatcher962/usb-com-fix/releases/download/v3.2.0/usb-com-fix-v3.2.0.zip
+  <a href="https://github.com/podcatcher962/usb-com-fix/releases/download/v3.6.0/USB串口一键修复.exe">
+    https://github.com/podcatcher962/usb-com-fix/releases/download/v3.6.0/USB串口一键修复.exe
   </a>
 </p>
 
 <p align="center">
-  <sub>Unzip -> double-click the .bat -> approve UAC -> click "Diagnose & Fix" (diagnosis + repair in one go)</sub>
+  <sub>Download -> double-click (one file, no unzip) -> approve UAC -> click "Diagnose & Fix" (diagnosis + repair in one go)</sub>
 </p>
 
 <p align="center">
@@ -147,7 +147,7 @@ This tool follows the logic of the official path:
 ## Usage
 
 ```
-1. Unzip, double-click "请双击这个-USB串口一键修复.bat"
+1. Double-click `USB串口一键修复.exe` (one file, nothing to unzip; the very first launch shows a short preparing screen)
 2. Approve the UAC prompt (admin rights are required to modify device records)
 3. Plug in the device that is not detected, and keep it plugged in (**plug in first, then click**)
 4. Click "Diagnose & Fix" - read-only diagnosis first, then repair if a fixable cause is found (no second prompt)
@@ -260,6 +260,53 @@ language**. The choice is remembered, and the first launch follows the system la
 
 ---
 
+## Version history
+
+### v3.6 · 2026-11-24
+
+Two pieces of field feedback: **"the window appears but nothing happens for a long time, so we force-quit it"**,
+and **"the zip has a pile of files and nobody knows which one to click"**.
+
+- **Shipped as one .exe**: double-click -> approve UAC -> UI. No unzip, no .bat, no guessing.
+  Scripts travel inside the exe and are unpacked to `%LOCALAPPDATA%\USBComFix\bin\<version>\`;
+  upgrading means replacing that one file, old copies are cleaned up automatically.
+- **Progress made visible**: two lines above the bar - left: what it is doing and how many of how many;
+  right: percent / elapsed / remaining. The yellow hint bar turns blue while working and rotates
+  a few plain-language reassurances. The confirmation dialog states the estimated duration up front.
+- **8-second cap per removal**: a stuck entry no longer stalls the whole loop; three timeouts in a
+  row means `pnputil` is unusable on that machine, and the tool stops on its own and says so.
+- **Automatic safe mode**: if the previous run did not finish cleanly, the next launch skips the
+  startup check and records why in the log.
+- **One binary for 32 / 64-bit**: a 32-bit process cannot see the real `System32\pnputil.exe`
+  (redirected to `SysWOW64`, where it does not exist) - the tool falls back to `Sysnative`.
+
+**What was actually tested** (this machine: 181 USB records / 175 offline leftovers,
+run under both 64-bit and 32-bit PowerShell on Windows 11)
+
+| Item | Result |
+|---|---|
+| Progress coverage | 49 callbacks across a full dry run: 0 -> 5 -> 20 -> per-item 21...63 -> 66 -> 74 -> 84 -> 93 -> 100, no gaps, no going backwards |
+| Hung window | 45-second simulated task, `IsHungAppWindow` probed every 2 s: **10/10 `False`**; `WM_NULL` answered 10/10 |
+| pnputil in 32-bit | `System32\pnputil.exe` missing, `Sysnative\pnputil.exe` present, resolved and called successfully |
+| Startup | 6.3 s with the startup check, 5.7 s in automatic safe mode |
+| Size | 8.3 MB single file (all scripts, icon and splash included) |
+
+### v3.5 · 2026-11-24
+
+Startup check moved into a separate process with a 25-second cap; removed one system query that
+could hang indefinitely; added `C:\ProgramData\ComFix\startup.log`.
+
+### v3.4 · 2026-11-24
+
+Direct registry reads, single device enumeration, USB-only error-code query. Startup check on the
+same machine: 5.0 s -> 2.7 s.
+
+### v3.2 · 2026-10-23
+
+Auto-pin watcher, deep diagnostic report, bilingual UI.
+
+---
+
 ## Compatibility
 
 | Item | Support |
@@ -268,7 +315,7 @@ language**. The choice is remembered, and the first launch follows the system la
 | Architecture | 32-bit / 64-bit |
 | Runtime | System .NET Framework and PowerShell 5.1 only - **nothing to install** |
 | Network | **Never connects to the internet** |
-| Installation | Portable, unzip and run |
+| Installation | Single portable .exe, double-click to run; installs no service (scripts are unpacked to `%LOCALAPPDATA%`) |
 
 On small screens (1024x768 / 1280x1024) the layout scales down to fit the work area; if it is truly
 too small, scrollbars appear so no button becomes unreachable.
@@ -327,7 +374,13 @@ usb-com-fix/
 │  ├─ screenshot-zh.png
 │  └─ screenshot-en.png
 ├─ 使用说明（先看这个）.txt      user guide (Chinese)
-├─ build.py                   builds the distributable folder + zip (and the .bat)
+├─ exe/
+│  ├─ launcher.py             single-file launcher (elevation, unpacking, safe-mode fallback)
+│  ├─ build_exe.py            PyInstaller build -> one .exe
+│  ├─ make_art.py             icon and splash generator
+│  ├─ usbfix.ico
+│  └─ splash.png
+├─ build.py                   builds the distributable script folder (for local debugging)
 ├─ LICENSE
 ├─ README.md                  Chinese
 └─ README.en.md               English
@@ -341,8 +394,13 @@ usb-com-fix/
 python build.py
 ```
 
-Produces `USB串口一键修复/` and the matching `.zip` (rename via the `ROOT` constant if you want).
-`build.py` converts `.ps1` to **UTF-8 with BOM + CRLF** and `.bat` to **GBK** - PowerShell 5.1 and
+```bash
+python build.py           # 1) src/ -> distributable script folder
+python exe/build_exe.py   # 2) script folder -> one .exe (this is what gets published)
+```
+
+`build.py` converts `.ps1` to **UTF-8 with BOM + CRLF** and generates a local .bat launcher -
+PowerShell 5.1 and
 cmd have different encoding requirements, and neither step can be skipped.
 
 ---

@@ -24,7 +24,7 @@ OUT_ZIP = os.path.join(HERE, ROOT + '.zip')
 
 # elevate.ps1 已不在启动路径上（bat 改用 -EncodedCommand 内联提权），
 # 保留它只是为了兼容旧包和留个对照，别删。
-PS1 = ['comfix-gui.ps1', 'comfix-core.ps1', 'usbprobe.ps1', 'elevate.ps1', 'report-launch-fail.ps1']
+PS1 = ['comfix-gui.ps1', 'comfix-core.ps1', 'usbprobe.ps1', 'healthprobe.ps1', 'elevate.ps1', 'report-launch-fail.ps1']
 
 
 def ps_enc(src):

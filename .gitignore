@@ -16,3 +16,9 @@ desktop.ini
 .idea/
 __pycache__/
 *.pyc
+
+# exe 构建中间产物
+exe/build/
+exe/dist/
+exe/src/
+*.spec

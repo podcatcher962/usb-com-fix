@@ -13,7 +13,10 @@ param(
     [string]$TestScope = 'AllUsb',
     [switch]$SelfTest,
     [string]$Lang = '',
-    [string]$ShotDlg = ''
+    [string]$ShotDlg = '',
+    # 自测专用：模拟一个 N 秒的长任务，在中途截图。用来验证进度条、计时、
+    # 安慰句在生产现场那种「要等几十秒」的场景下到底长什么样。
+    [int]$ShotWork = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -100,6 +103,9 @@ $C_HINT_FG    = [System.Drawing.Color]::FromArgb(138, 82, 0)
 $C_HINT_OK_BG = [System.Drawing.Color]::FromArgb(226, 242, 229)
 # 修完没重启：橙底，一直挂着直到真的重启
 $C_REBOOT_BG  = [System.Drawing.Color]::FromArgb(255, 224, 178)
+# v3.6
+# 正在干活时的提示条：蓝底白字，装上安慰句——和黄底那条一眼能分开
+$C_PROG_BAR  = [System.Drawing.Color]::FromArgb(21, 101, 192)
 
 # =====================================================================
 #  语言
@@ -161,7 +167,7 @@ $script:TXT = @{
         'btn.probe'   = '一键诊断修复'
         'btn.check'   = '只检查'
         'btn.undo'    = '还原上次'
-        'foot'        = '报告自动保存到桌面（{a}）　　留底在 C:\ProgramData\ComFix\backup'
+        'foot'        = '报告自动保存到报告目录（{a}）　　留底在 C:\ProgramData\ComFix\backup'
         'admin.ok'    = '管理员权限：已获得　|　只删「离线」的历史记录，插着的设备一条都不动'
         'admin.no'    = '管理员权限：未获得（修复会失败）'
         'menu.lang'   = '语言'
@@ -173,7 +179,7 @@ $script:TXT = @{
         'menu.probe'  = '只出取证报告（不自动修）'
         'log.probe.nodev'  = '提示：现在没检测到插着的串口设备。如果设备已经插好、只是系统认不出来，那是正常的，照样继续取证。'
         'log.probe.run'    = '深度取证中…（只读，不改任何设置）'
-        'log.probe.done'   = '取证完成，报告在桌面：USB认不出-取证报告.txt'
+        'log.probe.done'   = '取证完成，报告已生成：USB认不出-取证报告.txt'
         'log.probe.nofile' = '找不到取证脚本 usbprobe.ps1，程序目录不完整。'
         'log.probe.result' = '取证结论'
         'log.probe.verdict.fix' = '判定：这台电脑存在可自动修复的原因'
@@ -189,8 +195,8 @@ $script:TXT = @{
         'st.probe.done'         = '取证完成'
         'd.auto.title'          = '开始修复？'
         'd.auto.title2'         = '没有发现明确原因，还修吗？'
-        'd.auto.body'           = '取证已完成，完整报告在桌面。{n}{n}判定：{v}{n}{n}现在按同一套流程修复吗？{n}范围：{s}{n}目标串口号：COM{t}{n}{n}（修复前会自动留底，随时能还原）'
-        'd.auto.body2'          = '取证已完成，完整报告在桌面。{n}{n}判定：{v}{n}{n}没判出具体原因（设备可能没插着，或压根没被系统枚举）。{n}仍可执行一次清场：清掉已拔掉的旧记录 + 修系统层拦路项。{n}{n}要继续吗？{n}范围：{s}{n}目标串口号：COM{t}'
+        'd.auto.body'           = '取证已完成，完整报告已生成。{n}{n}判定：{v}{n}{n}现在按同一套流程修复吗？{n}范围：{s}{n}目标串口号：COM{t}{n}{n}（修复前会自动留底，随时能还原）'
+        'd.auto.body2'          = '取证已完成，完整报告已生成。{n}{n}判定：{v}{n}{n}没判出具体原因（设备可能没插着，或压根没被系统枚举）。{n}仍可执行一次清场：清掉已拔掉的旧记录 + 修系统层拦路项。{n}{n}要继续吗？{n}范围：{s}{n}目标串口号：COM{t}'
         'menu.zh'     = '中文'
         'menu.en'     = 'English'
         'st.ready'    = '就绪'
@@ -229,15 +235,15 @@ $script:TXT = @{
         'l.next1'     = '  · 如果能认出来、串口号正好是 COM{a}，就齐了'
         'l.next2'     = '  · 如果认出来了但串口号不对，点「固定守护」，它 2 秒内会把号改对'
         'l.next3'     = '  · 如果还是完全不认，点「只检查」，把报告发回来'
-        'l.saved'     = '报告已保存到桌面：{a}'
-        'l.notsaved'  = '报告写不到桌面（桌面可能不可写），上面的内容就是全部结果。'
+        'l.saved'     = '报告已保存：{a}'
+        'l.notsaved'  = '报告写入失败（目录可能不可写），上面的内容就是全部结果。'
         'l.checkhdr'  = '====== 检查 ======'
         'l.restorehdr'= '====== 还原：{a} ======'
         'l.errfix'    = '修复出错：{a}'
         'l.errcheck'  = '检查出错：{a}'
         'l.errrestore'= '还原出错：{a}'
         'l.errwatch'  = '守护出错，已自动停止：{a}'
-        'l.errfile'   = '错误详情已写到桌面：{a}'
+        'l.errfile'   = '错误详情已写入：{a}'
         'l.errfilebad'= '错误详情写文件失败，请把上面的内容截图发回。'
         'l.watchon'   = '====== 固定守护已开启，目标 COM{a} ======'
         'l.watchhint' = ' 插上新的空片，会自动把它的串口号固定到目标号，不用手动改。'
@@ -276,12 +282,40 @@ $script:TXT = @{
         'd.exit.t'    = '确认'
         'd.exit.b'    = '固定守护还在运行，确定退出？'
         'd.err.t'     = '出错了'
-        'd.err.b'     = "程序遇到一个意外错误，已经自动停下来。`n`n详细信息已写到桌面：`nUSB修复-出错报告.txt`n`n错误摘要：`n{a}`n`n请把这个文件发给开发。"
+        'd.err.b'     = "程序遇到一个意外错误，已经自动停下来。`n`n详细信息已写入：`nUSB修复-出错报告.txt`n`n错误摘要：`n{a}`n`n请把这个文件发给开发。"
         'd.stop'      = '请停下'
         'd.stopb'     = '正在处理中，请等这一步结束。'
         'hdr.help'    = '使用说明'
         'hdr.disc'    = '免责声明'
         'hdr.about'   = '关于'
+        # ---------- v3.6 进度 ----------
+        'st.working'  = '处理中…'
+        'prog.used'   = '已用 {a} 秒'
+        'prog.eta'    = '还要约 {a} 秒'
+        'prog.etaunk' = '正在估算…'
+        'prog.plan'   = '预计 {a} 秒左右'
+        'ph.read'     = '正在读取设备记录'
+        'ph.stat'     = '正在分类统计'
+        'ph.env'      = '正在检查系统设置'
+        'ph.deep'     = '正在做深度检查'
+        'fx.bak'      = '正在给系统留底'
+        'fx.sys'      = '正在修复系统层拦路项'
+        'fx.dead'     = '正在清理失效的设备记录'
+        'fx.flag'     = '正在清除「安装失败」标记'
+        'fx.pool'     = '正在校正 COM 号池'
+        'fx.scan'     = '正在重新扫描硬件'
+        'fx.pin'      = '正在固定串口号'
+        'fx.done'     = '全部完成'
+        'calm.1'      = '正在一条条整理旧记录，慢一点是正常的，请不要关窗口'
+        'calm.2'      = '记录多，说明这台电脑插拔得勤，清理完会顺畅很多'
+        'calm.3'      = '已经过半了，再等一会儿就好'
+        'calm.4'      = '不用一直盯着看，做完了会自己停下并告诉你结果'
+        'calm.5'      = '只清「已经拔掉」的记录，插着的设备一条都不动'
+        'l.est'       = '这台电脑的记录比较多，预计要几十秒 —— 界面上的进度会一直走，走完自己停。'
+        'l.estlight'  = '记录不多，预计几秒就好。'
+        'prog.slow'   = '这一步比预想的慢，还在继续，请不要关窗口。'
+        'prog.over'   = '仍在继续…'
+        'prog.n'      = '共 {a} 条记录'
         'btn.ok'      = '知道了'
     }
     'en' = @{
@@ -306,7 +340,7 @@ $script:TXT = @{
         'btn.probe'   = 'Diagnose && Fix'
         'btn.check'   = 'Check only'
         'btn.undo'    = 'Restore'
-        'foot'        = 'Report is saved to the Desktop ({a})　　Snapshots in C:\ProgramData\ComFix\backup'
+        'foot'        = 'Report is saved to the report folder ({a})　　Snapshots in C:\ProgramData\ComFix\backup'
         'admin.ok'    = 'Administrator: yes  |  Only "offline" records are removed; plugged-in devices are never touched'
         'admin.no'    = 'Administrator: NO (repair will fail)'
         'menu.lang'   = 'Language'
@@ -318,7 +352,7 @@ $script:TXT = @{
         'menu.probe'  = 'Diagnosis report only (no repair)'
         'log.probe.nodev'  = 'Note: no serial device is currently detected. If it is already plugged in but Windows does not see it, that is expected - continuing anyway.'
         'log.probe.run'    = 'Running deep diagnosis... (read-only, changes nothing)'
-        'log.probe.done'   = 'Done. Report on Desktop: USB-Not-Detected-Report.txt'
+        'log.probe.done'   = 'Done. Report created: USB-Not-Detected-Report.txt'
         'log.probe.nofile' = 'usbprobe.ps1 not found - the program folder is incomplete.'
         'log.probe.result' = 'Diagnosis summary'
         'log.probe.verdict.fix' = 'Verdict: fixable causes found on this machine'
@@ -334,8 +368,8 @@ $script:TXT = @{
         'st.probe.done'         = 'Diagnosis done'
         'd.auto.title'          = 'Start the repair?'
         'd.auto.title2'         = 'No clear cause found - run it anyway?'
-        'd.auto.body'           = 'Diagnosis finished; the full report is on the Desktop.{n}{n}Verdict: {v}{n}{n}Repair now with the same pipeline?{n}Scope: {s}{n}Target COM port: COM{t}{n}{n}(A snapshot is taken first, so it can always be rolled back)'
-        'd.auto.body2'          = 'Diagnosis finished; the full report is on the Desktop.{n}{n}Verdict: {v}{n}{n}No specific cause was found (the device may not be plugged in, or Windows never enumerated it).{n}You can still run a cleanup pass: remove leftover offline records and fix system-level blockers.{n}{n}Continue?{n}Scope: {s}{n}Target COM port: COM{t}'
+        'd.auto.body'           = 'Diagnosis finished; the full report has been created.{n}{n}Verdict: {v}{n}{n}Repair now with the same pipeline?{n}Scope: {s}{n}Target COM port: COM{t}{n}{n}(A snapshot is taken first, so it can always be rolled back)'
+        'd.auto.body2'          = 'Diagnosis finished; the full report has been created.{n}{n}Verdict: {v}{n}{n}No specific cause was found (the device may not be plugged in, or Windows never enumerated it).{n}You can still run a cleanup pass: remove leftover offline records and fix system-level blockers.{n}{n}Continue?{n}Scope: {s}{n}Target COM port: COM{t}'
         'menu.zh'     = '中文'
         'menu.en'     = 'English'
         'st.ready'    = 'Ready'
@@ -374,15 +408,15 @@ $script:TXT = @{
         'l.next1'     = '  - It shows up and the port is COM{a} -> all good'
         'l.next2'     = '  - It shows up but the port is wrong -> turn on "Auto-pin", fixed in 2 seconds'
         'l.next3'     = '  - It still does not show up -> click "Check only" and send the report back'
-        'l.saved'     = 'Report saved to the Desktop: {a}'
-        'l.notsaved'  = 'Could not write the report to the Desktop; the log above is the full result.'
+        'l.saved'     = 'Report saved: {a}'
+        'l.notsaved'  = 'Could not write the report file; the log above is the full result.'
         'l.checkhdr'  = '====== Check ======'
         'l.restorehdr'= '====== Restore: {a} ======'
         'l.errfix'    = 'Repair error: {a}'
         'l.errcheck'  = 'Check error: {a}'
         'l.errrestore'= 'Restore error: {a}'
         'l.errwatch'  = 'Watch failed and stopped automatically: {a}'
-        'l.errfile'   = 'Details written to the Desktop: {a}'
+        'l.errfile'   = 'Details written: {a}'
         'l.errfilebad'= 'Could not write the error file. Please take a screenshot of the log above.'
         'l.watchon'   = '====== Auto-pin enabled, target COM{a} ======'
         'l.watchhint' = ' Plug in a blank device and its port is pinned automatically - no manual registry editing.'
@@ -421,12 +455,40 @@ $script:TXT = @{
         'd.exit.t'    = 'Confirm'
         'd.exit.b'    = 'Auto-pin is still running. Exit anyway?'
         'd.err.t'     = 'Error'
-        'd.err.b'     = "The program hit an unexpected error and stopped.`n`nDetails were written to the Desktop:`nUSB-Fix-Error-Report.txt`n`nSummary:`n{a}`n`nPlease send that file to the developer."
+        'd.err.b'     = "The program hit an unexpected error and stopped.`n`nDetails were written:`nUSB-Fix-Error-Report.txt`n`nSummary:`n{a}`n`nPlease send that file to the developer."
         'd.stop'      = 'Please wait'
         'd.stopb'     = 'An operation is in progress. Let it finish first.'
         'hdr.help'    = 'Instructions'
         'hdr.disc'    = 'Disclaimer'
         'hdr.about'   = 'About'
+        # ---------- v3.6 progress ----------
+        'st.working'  = 'Working...'
+        'prog.used'   = '{a}s elapsed'
+        'prog.eta'    = '~{a}s left'
+        'prog.etaunk' = 'estimating...'
+        'prog.plan'   = '~{a}s total'
+        'ph.read'     = 'Reading device records'
+        'ph.stat'     = 'Grouping and counting'
+        'ph.env'      = 'Checking system settings'
+        'ph.deep'     = 'Running deep checks'
+        'fx.bak'      = 'Snapshotting the system'
+        'fx.sys'      = 'Repairing system-level blockers'
+        'fx.dead'     = 'Removing stale device records'
+        'fx.flag'     = 'Clearing failed-install flags'
+        'fx.pool'     = 'Rebuilding the COM port pool'
+        'fx.scan'     = 'Rescanning hardware'
+        'fx.pin'      = 'Pinning the COM port'
+        'fx.done'     = 'All done'
+        'calm.1'      = 'Working through the old records one by one - slow is normal here, please leave the window open'
+        'calm.2'      = 'Lots of records means this PC gets plugged a lot; it will feel much smoother after cleanup'
+        'calm.3'      = 'Past the halfway mark - just a little longer'
+        'calm.4'      = 'No need to stare at it; it stops by itself and reports the result'
+        'calm.5'      = 'Only records of unplugged devices are touched - nothing in use is removed'
+        'l.est'       = 'This PC has many records, so expect a few tens of seconds - the progress bar keeps moving and stops on its own.'
+        'l.estlight'  = 'Not many records - should only take a few seconds.'
+        'prog.slow'   = 'This step is slower than expected but still running. Please leave the window open.'
+        'prog.over'   = 'still running...'
+        'prog.n'      = '{a} records'
         'btn.ok'      = 'OK'
     }
 }
@@ -449,14 +511,31 @@ function Fmt([string]$k, $map) {
 $script:Busy = $false
 
 # =====================================================================
-#  桌面报告
+#  报告输出目录
+#  2026-11-04 起不再往桌面写，改为独立目录；找不到时按顺序回退
 # =====================================================================
 function Get-DeskPath {
-    $d = ''
-    try { $d = [Environment]::GetFolderPath('Desktop') } catch { }
-    if (-not $d -or -not (Test-Path $d)) { $d = Join-Path $env:USERPROFILE 'Desktop' }
-    if (-not (Test-Path $d)) { $d = $env:TEMP }
-    return $d
+    $here = ''
+    try { $here = $PSScriptRoot } catch { }
+    if (-not $here) { try { $here = $PSCommandPath } catch { } }
+    $base = $here
+    if ($here -and (Split-Path -Leaf $here) -eq '_program') { $base = Split-Path -Parent $here }
+
+    $cand = New-Object System.Collections.ArrayList
+    if ($env:WB_REPORT_DIR) { [void]$cand.Add($env:WB_REPORT_DIR) }
+    # 报告优先放在程序自己所在目录的「报告」里 —— 拷到 U 盘带走最方便。
+    if ($base) { [void]$cand.Add((Join-Path $base '报告')) }
+    try { [void]$cand.Add([Environment]::GetFolderPath('Desktop')) } catch { }
+    [void]$cand.Add($env:TEMP)
+
+    foreach ($c in $cand) {
+        if (-not $c) { continue }
+        try {
+            if (-not (Test-Path -LiteralPath $c)) { New-Item -ItemType Directory -Path $c -Force -ErrorAction Stop | Out-Null }
+        } catch { }
+        if (Test-Path -LiteralPath $c) { return $c }
+    }
+    return $env:TEMP
 }
 
 function Format-ErrText($er) {
@@ -518,7 +597,7 @@ function Save-DeskReport {
         foreach ($t in $script:CF_LOG) { [void]$L.Add('  ' + $t) }
         [void]$L.Add('')
         [void]$L.Add('------ How to report ------')
-        [void]$L.Add('  Send this file together with "Device-Check-Report.txt" from the Desktop.')
+        [void]$L.Add('  Send this file together with "Device-Check-Report.txt" from the report folder.')
         [void]$L.Add('  Also describe one thing: when you plug in a new device, does Device')
         [void]$L.Add('  Manager stay completely silent, or does a yellow exclamation mark appear?')
         [void]$L.Add('  If there is an exclamation mark, double-click it and note the error code.')
@@ -541,7 +620,7 @@ function Save-DeskReport {
         foreach ($t in $script:CF_LOG) { [void]$L.Add('  ' + $t) }
         [void]$L.Add('')
         [void]$L.Add('══════ 怎么反馈 ══════')
-        [void]$L.Add('  把这个文件连同桌面上的「设备检查报告.txt」一起发给开发。')
+        [void]$L.Add('  把这个文件连同报告目录里的「设备检查报告.txt」一起发给开发。')
         [void]$L.Add('  再补一句现场观察：插上新机器时，设备管理器里是「完全没动静」，')
         [void]$L.Add('  还是「多了一个黄色感叹号」？如果是感叹号，双击看错误代码是几。')
     }
@@ -557,7 +636,7 @@ function Save-DeskReport {
 #  窗体
 # =====================================================================
 $form = New-Object System.Windows.Forms.Form
-$form.ClientSize = New-Object System.Drawing.Size(720, 542)
+$form.ClientSize = New-Object System.Drawing.Size(720, 584)
 $form.StartPosition = 'CenterScreen'
 $form.BackColor = $C_BG
 $form.ForeColor = $C_TEXT
@@ -636,7 +715,7 @@ $form.Controls.Add($lbSub)
 # 取证里最关键的一项「系统到底有没有看到这台设备」，设备不在场就是空的；
 # 所以这句话不能只写在日志里，得一直横在按钮上方，黄底加粗。
 $lbHint = New-Object System.Windows.Forms.Label
-$lbHint.Location = New-Object System.Drawing.Point(24, 396)
+$lbHint.Location = New-Object System.Drawing.Point(24, 442)
 $lbHint.Size = New-Object System.Drawing.Size(672, 30)
 $lbHint.TextAlign = 'MiddleLeft'
 # Label 默认 UseMnemonic=true，会把「&」当成助记符吃掉 ——
@@ -652,7 +731,7 @@ $form.Controls.Add($lbHint)
 # 修完点「否」以后，这条横条会变成橙色“待重启”，右边挂一个直接重启的按钮，
 # 免得人关了弹窗就忘了重启（不重启，改了的东西不生效，等于白修）。
 $btnReboot = New-Object System.Windows.Forms.Button
-$btnReboot.Location = New-Object System.Drawing.Point(572, 398)
+$btnReboot.Location = New-Object System.Drawing.Point(572, 444)
 $btnReboot.Size = New-Object System.Drawing.Size(120, 26)
 $btnReboot.FlatStyle = 'Flat'
 $btnReboot.FlatAppearance.BorderSize = 0
@@ -726,19 +805,49 @@ $logBox.Location = New-Object System.Drawing.Point(24, 136)
 $logBox.Size = New-Object System.Drawing.Size(672, 240)
 $form.Controls.Add($logBox)
 
+# v3.6：进度条从 8px 加粗到 22px。原来那条细线在低分辨率屏上几乎看不见，
+# 现场（尤其离屏幕一米远的生产位）根本判断不出程序到底在动还是死了。
 $bar = New-Object System.Windows.Forms.ProgressBar
-$bar.Location = New-Object System.Drawing.Point(24, 384)
-$bar.Size = New-Object System.Drawing.Size(672, 8)
+$bar.Location = New-Object System.Drawing.Point(24, 406)
+$bar.Size = New-Object System.Drawing.Size(672, 22)
 $bar.Style = 'Continuous'
 $bar.Minimum = 0
 $bar.Maximum = 100
 $bar.Value = 0
 $form.Controls.Add($bar)
 
+# 进度条上方的两行字：
+#   左 = 「第 3/7 步 · 正在清理失效的设备记录  43 / 187」—— 在做什么、做到哪了
+#   右 = 「43%　已用 12 秒　还要约 26 秒」—— 多久、还剩多久
+# 这四样东西是给「不敢等、一急就强关进程」的人看的：
+# 只要这四个数一直在变，人就知道程序没死。
+$lbProgStage = New-Object System.Windows.Forms.Label
+$lbProgStage.Location = New-Object System.Drawing.Point(24, 380)
+$lbProgStage.Size = New-Object System.Drawing.Size(430, 24)
+$lbProgStage.TextAlign = 'MiddleLeft'
+$lbProgStage.AutoSize = $false
+$lbProgStage.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10, [System.Drawing.FontStyle]::Bold)
+$lbProgStage.ForeColor = $C_SUB
+$lbProgStage.Text = ''
+$form.Controls.Add($lbProgStage)
+
+$lbProgInfo = New-Object System.Windows.Forms.Label
+$lbProgInfo.Location = New-Object System.Drawing.Point(454, 380)
+$lbProgInfo.Size = New-Object System.Drawing.Size(242, 24)
+$lbProgInfo.TextAlign = 'MiddleRight'
+$lbProgInfo.AutoSize = $false
+$lbProgInfo.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+$lbProgInfo.ForeColor = $C_SUB
+$lbProgInfo.Text = ''
+$form.Controls.Add($lbProgInfo)
+
 # 提示条的两种状态：黄底＝请先插设备；绿底＝已经插着 N 台了。
 # 数字来自 Show-QuickHealth 里那次体检（CF-HealthCheck 的 Online），不额外扫一遍设备。
 $script:HintOnline  = -1
 $script:NeedReboot  = $false
+# v3.6：启动体检数出来的「历史残留」条数。点「一键诊断修复」前用它估时长——
+# 让人在按下按钮之前就知道大概要等多久，比按下之后再解释有用得多。
+$script:OfflineEst  = -1
 
 function Set-HintText {
     # 待重启优先：修完没重启这件事必须一直挂在屏幕上，不能被「只检查」刷掉
@@ -780,6 +889,25 @@ function Add-LogLine([string]$line, [string]$level) {
 
 $script:CF_OnLog = { param($line, $level) Add-LogLine $line $level }
 
+# v3.6：core 每做完一小段就回调这里，把进度画到界面上。
+# core 里那些 CF-Progress 在子进程（healthprobe）里跑时没人挂这个变量，
+# 函数会直接返回，不会有副作用。
+$script:CF_OnProgress = {
+    param($pct, $zh, $en, $dzh, $den)
+    $st = $zh
+    if ($script:LANG -ne 'zh') { if ($en) { $st = $en } }
+    $dt = $dzh
+    if ($script:LANG -ne 'zh') { if ($den) { $dt = $den } }
+    Set-Work $pct $st $dt
+}
+
+$script:HealthProc = $null
+
+# 忙碌时把按钮涂成浅灰：Flat 按钮设了 BackColor 之后，Enabled=false 只会让
+# 文字变淡，底色还是绿的蓝的 —— 看着像「还能点」，现场就会一直点。
+$script:BtnList  = @()
+$script:BtnSaved = @{}
+
 function Set-Busy([bool]$b) {
     $script:Busy = $b
     $mFix.Enabled     = -not $b
@@ -792,7 +920,153 @@ function Set-Busy([bool]$b) {
     $cbScope.Enabled  = -not $b
     $mZh.Enabled      = -not $b
     $mEn.Enabled      = -not $b
-    if ($b) { $bar.Style = 'Marquee' } else { $bar.Style = 'Continuous'; $bar.Value = 0 }
+    for ($i = 0; $i -lt $script:BtnList.Count; $i++) {
+        $bt = $script:BtnList[$i]
+        if ($b) {
+            if (-not $script:BtnSaved.ContainsKey($i)) { $script:BtnSaved[$i] = $bt.BackColor }
+            $bt.BackColor = [System.Drawing.Color]::FromArgb(203, 208, 213)
+        } else {
+            if ($script:BtnSaved.ContainsKey($i)) {
+                $bt.BackColor = $script:BtnSaved[$i]
+                $script:BtnSaved.Remove($i)
+            }
+        }
+    }
+    # v3.6：进度条样式交给 Start-Work / End-Work 管。
+    # 原来这里切 Marquee，一进忙碌就变成一条无法预测的滑块，
+    # 看不出做到哪、还有多久 —— 正是现场「以为卡死」的来源之一。
+    [System.Windows.Forms.Application]::DoEvents()
+}
+
+# =====================================================================
+#  工作进度（v3.6 新增）
+#
+#  背景：这工具最重的动作是「一条条删注册表里的失效记录」，几百条要几十秒。
+#  旧版这段时间只有一个跑马灯 + 一行小字，现场的人等不住就强关。
+#  这里把「在做什么 / 做到第几条 / 百分比 / 已用多久 / 还要多久」全部摊开，
+#  并且把顶部那条黄底提示改成蓝底的安慰句轮播 —— 位置最显眼，话是人话。
+#
+#  为什么要「假进度」：体检和删除都没有可靠的进度来源（系统不给），
+#  所以百分比按 sqrt(已用/预估) 爬：前期走得快、后期慢下来，
+#  但永远在动，且不封顶到 100%，不会出现「条满了却还没完」的尴尬。
+# =====================================================================
+$script:WStart   = $null   # [datetime] 开始时刻
+$script:WPct     = 0       # 当前百分比
+$script:WStage   = ''      # 大字
+$script:WDetail  = ''      # 明细（43 / 187）
+$script:WPlan    = 0       # 预估总时长（秒），0 = 不用时间估算
+$script:WCalmIdx = 0
+$script:WCalmAt  = $null
+$script:WLastTxt = ''
+$script:CalmKeys = @('calm.1', 'calm.2', 'calm.3', 'calm.4', 'calm.5')
+
+function Clear-Work {
+    $script:WStart  = $null
+    $script:WPct    = 0
+    $script:WStage  = ''
+    $script:WDetail = ''
+    $script:WPlan   = 0
+    $script:WLastTxt = ''
+    $bar.Style = 'Continuous'
+    $bar.Value = 0
+    $lbProgStage.Text = ''
+    $lbProgStage.ForeColor = $C_SUB
+    $lbProgInfo.Text = ''
+}
+
+# 忙碌期间的顶部提示条：蓝底白字，轮播安慰句。
+# 闲下来时必须还原成原来的黄底提示，否则「请先插上设备」那句话就没了。
+function Set-CalmBar {
+    $t = (T $script:CalmKeys[$script:WCalmIdx % $script:CalmKeys.Count])
+    $lbHint.Text      = $t
+    $lbHint.BackColor = $C_PROG_BAR
+    $lbHint.ForeColor = [System.Drawing.Color]::White
+    $lbHint.Size      = New-Object System.Drawing.Size(672, 30)
+    $btnReboot.Visible = $false
+}
+
+function Start-Work([string]$stage, [int]$plan = 0) {
+    $script:WStart   = Get-Date
+    $script:WPct     = 0
+    $script:WStage   = $stage
+    $script:WDetail  = ''
+    $script:WPlan    = $plan
+    $script:WCalmIdx = 0
+    $script:WCalmAt  = Get-Date
+    $script:WLastTxt = ''
+    $bar.Style = 'Continuous'
+    $bar.Value = 0
+    Set-Busy $true
+    Set-Status (T 'st.working') 'run'
+    Set-CalmBar
+    $lbProgStage.ForeColor = $C_BLUE
+    Update-Work
+}
+
+function Set-Work([int]$pct, [string]$stage, [string]$detail = '') {
+    if ($pct -lt 0) { $pct = 0 }
+    if ($pct -gt 100) { $pct = 100 }
+    $script:WPct     = $pct
+    if ($stage  -ne '') { $script:WStage  = $stage }
+    $script:WDetail  = $detail
+    Update-Work
+}
+
+function Update-Work {
+    if ($null -eq $script:WStart) { return }
+    $now = Get-Date
+    $el = [int]($now - $script:WStart).TotalSeconds
+
+    $p = $script:WPct
+    # 有预估总时长时，按时间把百分比往上托（防止某一步不给回调时条子定住）
+    if ($script:WPlan -gt 0 -and $p -lt 97) {
+        $f = [Math]::Sqrt([Math]::Min(1.0, $el / [double]$script:WPlan))
+        $vp = [int][Math]::Floor(97 * $f)
+        if ($vp -gt $p) { $p = $vp }
+    }
+    if ($p -gt 97 -and $script:WPlan -gt 0 -and $script:WPct -lt 100) { $p = 97 }
+
+    if ($bar.Value -ne $p) {
+        try { $bar.Value = $p } catch { }
+    }
+    $lbProgStage.Text = $script:WStage
+    if ($script:WDetail -ne '') { $lbProgStage.Text = $script:WStage + '　' + $script:WDetail }
+
+    $usedTxt = Fmt 'prog.used' @{ a = $el }
+    $etaTxt = ''
+    if ($script:WPlan -gt 0) {
+        $left = $script:WPlan - $el
+        # 预估时间已经用完但还没结束：明说「仍在继续」。
+        # 这里如果继续倒计时到 1 秒再不动，比不说更让人想强关。
+        if ($left -gt 0) { $etaTxt = Fmt 'prog.eta' @{ a = $left } }
+        else { $etaTxt = (T 'prog.over') }
+    } elseif ($p -ge 4) {
+        $etaTxt = Fmt 'prog.eta' @{ a = [int]([Math]::Max(1, $el * (100 - $p) / $p)) }
+    } else {
+        $etaTxt = (T 'prog.etaunk')
+    }
+    $lbProgInfo.Text = ([string]$p) + '%　' + $usedTxt + '　' + $etaTxt
+
+    # 安慰句每 4 秒换一句；换句本身也是「还活着」的信号
+    if ($null -ne $script:WCalmAt -and ($now - $script:WCalmAt).TotalSeconds -ge 4) {
+        $script:WCalmAt = $now
+        $script:WCalmIdx++
+        Set-CalmBar
+    }
+    [System.Windows.Forms.Application]::DoEvents()
+}
+
+function End-Work([string]$statusKey = '') {
+    $script:WStart = $null
+    # 归零，不留一条满格的蓝条：那条满格在待命状态下会被误读成「卡在 100%」。
+    $bar.Value = 0
+    $lbProgStage.Text = ''
+    $lbProgInfo.Text = ''
+    $lbProgStage.ForeColor = $C_SUB
+    Set-Busy $false
+    # 不传就保留调用处已经设好的状态（「修复完成」/「修复出错」都会被这层盖掉）
+    if ($statusKey -ne '') { Set-Status (T $statusKey) }
+    Set-HintText
     [System.Windows.Forms.Application]::DoEvents()
 }
 
@@ -818,7 +1092,7 @@ function Get-IncludeHid {
 # ---------- 按钮 ----------
 function New-Btn($x, $w, $color) {
     $b = New-Object System.Windows.Forms.Button
-    $b.Location = New-Object System.Drawing.Point($x, 432)
+    $b.Location = New-Object System.Drawing.Point($x, 478)
     $b.Size = New-Object System.Drawing.Size($w, 44)
     $b.FlatStyle = 'Flat'
     $b.FlatAppearance.BorderSize = 0
@@ -834,17 +1108,18 @@ $btnCheck = New-Btn 244 130 $C_GRAY
 $btnWatch = New-Btn 394 150 $C_BLUE
 $btnUndo  = New-Btn 564 132 $C_GRAY
 $form.Controls.AddRange(@($btnProbe, $btnCheck, $btnWatch, $btnUndo))
+$script:BtnList = @($btnProbe, $btnCheck, $btnWatch, $btnUndo)
 
 $lbFoot = New-Object System.Windows.Forms.Label
 $lbFoot.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 8.5)
 $lbFoot.ForeColor = $C_SUB
-$lbFoot.Location = New-Object System.Drawing.Point(26, 490)
+$lbFoot.Location = New-Object System.Drawing.Point(26, 530)
 $lbFoot.Size = New-Object System.Drawing.Size(672, 20)
 $form.Controls.Add($lbFoot)
 
 $lbAdmin = New-Object System.Windows.Forms.Label
 $lbAdmin.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 8.5)
-$lbAdmin.Location = New-Object System.Drawing.Point(26, 512)
+$lbAdmin.Location = New-Object System.Drawing.Point(26, 552)
 $lbAdmin.Size = New-Object System.Drawing.Size(672, 20)
 if ((CF-IsAdmin) -or ($Shot -ne '') -or $SelfTest) {
     $lbAdmin.ForeColor = $C_GREEN
@@ -1010,8 +1285,8 @@ function Get-HelpLines {
             '  - Everything is logged and snapshotted',
             '',
             'REPORTS',
-            '  Desktop\Device-Check-Report.txt  - full inspection report (always refreshed)',
-            '  Desktop\USB-Fix-Error-Report.txt  - only when something goes wrong',
+            '  Report folder\Device-Check-Report.txt  - full inspection report (always refreshed)',
+            '  Report folder\USB-Fix-Error-Report.txt  - only when something goes wrong',
             '  Snapshots: C:\ProgramData\ComFix\backup\fix-YYYYMMDD-HHMMSS\',
             '',
             'IMPORTANT',
@@ -1108,8 +1383,8 @@ function Get-HelpLines {
         '  · 全程留底，可一键还原',
         '',
         '报告在哪',
-        '  桌面\设备检查报告.txt      完整检查报告（每次都会刷新）',
-        '  桌面\USB修复-出错报告.txt  只在出错时生成',
+        '  报告目录\设备检查报告.txt      完整检查报告（每次都会刷新）',
+        '  报告目录\USB修复-出错报告.txt  只在出错时生成',
         '  留底：C:\ProgramData\ComFix\backup\fix-日期-时间\',
         '',
         '重要提醒',
@@ -1143,7 +1418,7 @@ function Get-DiscLines {
             '   while the tool is running.',
             '',
             '5. If it does not solve the problem, use "Restore" to roll back, then',
-            '   send the Desktop report to the developer.',
+            '   send the report from the report folder to the developer.',
             '',
             'By using this tool you accept the terms above.'
         )
@@ -1167,7 +1442,7 @@ function Get-DiscLines {
         '四、修改需要重启电脑才能完全生效。工具运行过程中请勿断电。',
         '',
         '五、如果修复后问题依旧，请先用「还原上次」回退，',
-        '　　再把桌面生成的报告发给开发。',
+        '　　再把报告目录里的报告发给开发。',
         '',
         '使用本工具即表示您已理解并接受以上条款。'
     )
@@ -1178,7 +1453,7 @@ function Get-AboutLines {
         return @(
             'USB / USB-Serial Port Fix',
             '',
-            'Version   : 3.2',
+            'Version   : 3.5',
             'Author    : Lanlan Eternal',
             'Platform  : Windows 7 / 8 / 10 / 11, 32-bit and 64-bit',
             'Engine    : PowerShell 5.1 + WinForms (no install, portable)',
@@ -1207,8 +1482,8 @@ function Get-AboutLines {
             '  - full snapshot + one-click restore',
             '',
             'Reports',
-            '  Desktop\Device-Check-Report.txt  full inspection report',
-            '  Desktop\USB-Fix-Error-Report.txt  error report',
+            '  Report folder\Device-Check-Report.txt  full inspection report',
+            '  Report folder\USB-Fix-Error-Report.txt  error report',
             '',
             '© Lanlan Eternal'
         )
@@ -1216,7 +1491,7 @@ function Get-AboutLines {
     return @(
         'USB / 串口 一键修复',
         '',
-        '版本     : 3.2',
+        '版本     : 3.5',
         '作者     : 永远的兰兰',
         '适用系统 : Windows 7 / 8 / 10 / 11，32 位 / 64 位',
         '运行方式 : PowerShell 5.1 + WinForms，免安装、绿色便携',
@@ -1244,8 +1519,8 @@ function Get-AboutLines {
         '  · 全程留底，一键还原',
         '',
         '报告',
-        '  桌面\设备检查报告.txt      完整检查报告',
-        '  桌面\USB修复-出错报告.txt  出错报告',
+        '  报告目录\设备检查报告.txt      完整检查报告',
+        '  报告目录\USB修复-出错报告.txt  出错报告',
         '',
         '© 永远的兰兰'
     )
@@ -1336,9 +1611,7 @@ function Invoke-Probe([switch]$AutoFix) {
     Add-LogLine ('====== ' + (T 'log.probe.run') + ' ======') 'info'
     if ($script:HintOnline -le 0) { Add-LogLine (T 'log.probe.nodev') 'warn' }
     try {
-        $desk = ''
-        try { $desk = [Environment]::GetFolderPath('Desktop') } catch { $desk = $env:TEMP }
-        if ($desk -eq '') { $desk = $env:TEMP }
+        $desk = Get-DeskPath
 
         $probeName = $(if ($script:LANG -eq 'en') { 'USB-Not-Detected-Report.txt' } else { 'USB认不出-取证报告.txt' })
 
@@ -1460,58 +1733,184 @@ function Show-Welcome {
     Add-LogLine (T 'l.ready1') 'info'
     Add-LogLine (T 'l.ready2') 'info'
     Add-LogLine '' 'info'
-    Show-QuickHealth
-    Set-Status (T 'st.ready')
+    # 安全模式。现场如果卡在启动体检上，设 USB_FIX_SAFE=1（或用
+    # 「卡住了就用这个-安全模式.bat」）启动，就只画界面不体检，功能照常手动点。
+    if ($env:USB_FIX_SAFE -eq '1') {
+        CF-Trace 'welcome: SAFE mode, startup health check skipped'
+        if ($env:USB_FIX_AUTOSAFE -eq '1') {
+            Add-LogLine (T '上一次启动没有正常完成（多半是卡在启动体检上），所以这一次自动跳过了体检。功能一样都能用。' 'The previous launch did not finish cleanly (most likely stuck on the startup check), so it was skipped this time. Every function still works.') 'warn'
+        }
+        Add-LogLine (T '安全模式：已跳过启动体检（体检可能会卡住）。直接点上面的按钮使用即可。' 'Safe mode: startup health check skipped. Just use the buttons above.') 'warn'
+        Add-LogLine (T '要看设备统计，点「开始检查」；要清理，点「一键诊断修复」。' 'For device stats press Check; to clean up press Fix.') 'info'
+        Set-Status (T 'st.ready')
+        return
+    }
+
+    CF-Trace 'welcome: health check start'
+    try {
+        Show-QuickHealth
+    } catch {
+        CF-Trace ('welcome: health check threw - ' + $_.Exception.Message)
+    } finally {
+        if ($null -ne $script:WStart) { End-Work 'st.ready' }
+        CF-Trace 'welcome: health check end'
+    }
 }
 
 function Show-QuickHealth {
+    # v3.5：整段搬到子进程（healthprobe.ps1）里跑。
+    #
+    # 为什么：体检要碰 SetupAPI 和 WMI，这两样在故障机上可能根本不返回 ——
+    # 不是慢，是一直挂着。留在 UI 线程里跑，窗口就跟着一起躺下，现场只能强关。
+    # 现在父窗口最多等 25 秒，等不到就放弃，界面照常能用。
+    #
+    # v3.6：子进程每进入一步就把阶段写进 -Prog 文件，父进程轮询读出来，
+    # 变成「做什么 + 第几秒 + 还剩多久」。体检不再是黑箱。
+    $own = ($null -eq $script:WStart)
+    if ($own) { Start-Work (T 'ph.read') 14 }
+
+    $tmp = Join-Path $env:TEMP ('usbfix_health_' + $PID + '.txt')
+    $prg = Join-Path $env:TEMP ('usbfix_health_' + $PID + '.prog')
+    try { if (Test-Path $tmp) { Remove-Item $tmp -Force } } catch { }
+    try { if (Test-Path $prg) { Remove-Item $prg -Force } } catch { }
+
+    $hp = Join-Path $PSScriptRoot 'healthprobe.ps1'
+    if (-not (Test-Path $hp)) {
+        Add-LogLine (T '体检模块缺失（healthprobe.ps1），已跳过启动体检。' 'healthprobe.ps1 is missing - startup check skipped.') 'warn'
+        if ($own) { End-Work 'st.ready' }
+        return
+    }
+
+    $stagePct = @{ 'read' = 2; 'stat' = 56; 'env' = 72; 'deep' = 84 }
+    $stageKey = @{ 'read' = 'ph.read'; 'stat' = 'ph.stat'; 'env' = 'ph.env'; 'deep' = 'ph.deep' }
+
+    CF-Trace 'health: spawn child probe'
     try {
-        CF-ResetPresentCache
-        $h = CF-HealthCheck
-        $script:HintOnline = $h.Online
-        Set-HintText
-        Add-LogLine (Fmt 'l.pool' @{a = $h.Used; b = $h.Free; c = $h.MaxUsed }) 'info'
-        Add-LogLine (Fmt 'l.serial' @{a = $h.Online; b = $h.Offline; c = $h.BadFlags }) 'info'
-        $dupN = 0
-        foreach ($d in $h.Duplicates) { $dupN++ }
-        if ($dupN -gt 0) { Add-LogLine (Fmt 'l.dup' @{a = $dupN }) 'warn' }
-        if ($h.Orphans.Count -gt 0) { Add-LogLine (Fmt 'l.orphan' @{a = $h.Orphans.Count }) 'warn' }
-
-        Add-LogLine '' 'info'
-        Add-LogLine (Fmt 'l.usbtot' @{a = $h.UsbTotal; b = $h.UsbOffline }) 'info'
-        $cats = @($h.CatCount.Keys | Sort-Object)
-        foreach ($k in $cats) {
-            Add-LogLine (Fmt 'l.catrow' @{name = (CF-CatName $k); a = $h.CatCount[$k]; b = $h.CatOnline[$k]; c = $h.CatOff[$k] }) 'info'
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = Join-Path $PSHOME 'powershell.exe'
+        $psi.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $hp +
+                         '" -Out "' + $tmp + '" -Prog "' + $prg + '" -Lang ' + $script:LANG
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.WindowStyle = 'Hidden'
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        $script:HealthProc = $proc
+        # 绝不能用 WaitForExit —— 它会把 UI 线程整个钉住，窗口在这段时间里
+        # 拖不动、关不掉，现场还是会当成死机。
+        # 改成边等边泵消息：窗口始终能拖动、能关闭，按钮因为 Set-Busy 是灰的。
+        $deadline = (Get-Date).AddSeconds(25)
+        $lastStage = ''
+        while ((-not $proc.HasExited) -and ((Get-Date) -lt $deadline)) {
+            # 读子进程写的阶段文件（可能只写了一半，读失败就跳过）
+            $st = ''
+            $cnt = ''
+            try {
+                if (Test-Path $prg) {
+                    $t = [System.IO.File]::ReadAllText($prg, [System.Text.Encoding]::UTF8)
+                    $a = $t -split "`t"
+                    if ($a.Count -ge 1) { $st = $a[0] }
+                    if ($a.Count -ge 2) { $cnt = $a[1] }
+                }
+            } catch { }
+            if ($st -ne '' -and $stagePct.ContainsKey($st) -and $st -ne $lastStage) {
+                $lastStage = $st
+                $d = ''
+                if ($cnt -ne '' -and $cnt -match '^\d+$') { $d = (Fmt 'prog.n' @{ a = $cnt }) }
+                Set-Work $stagePct[$st] (T $stageKey[$st]) $d
+            } else {
+                Update-Work
+            }
+            Start-Sleep -Milliseconds 120
         }
-
-        $hot = @(CF-GetUsbGroups | Where-Object { -not $_.Protected -and $_.Offline -ge 20 } |
-                 Sort-Object -Property Offline -Descending | Select-Object -First 3)
-        foreach ($g in $hot) {
-            Add-LogLine (Fmt 'l.hot' @{a = $g.Group; b = $g.Offline; c = (CF-CatName $g.Category) }) 'warn'
+        $done = $proc.HasExited
+        $script:HealthProc = $null
+        if ($done) {
+            CF-Trace ('health: child exited, code=' + $proc.ExitCode)
+            Set-Work 92 (T 'ph.deep') ''
+        } else {
+            try { $proc.Kill() } catch { }
+            CF-Trace 'health: child TIMEOUT 25s, killed'
+            Set-Work 97 (T 'ph.deep') ''
+            Add-LogLine (T '启动体检 25 秒没有返回，已放弃（多半是系统 WMI 卡住了）。界面和所有功能照样能用，直接点上面的按钮就行。' 'Startup check did not return within 25s and was abandoned (system WMI is probably stuck). The window and every function still work - just use the buttons above.') 'warn'
+            if ($own) { End-Work 'st.ready' }
+            return
         }
+    } catch {
+        CF-Trace ('health: spawn failed - ' + $_.Exception.Message)
+        Add-LogLine (Fmt 'l.errcheck' @{a = $_.Exception.Message }) 'err'
+        if ($own) { End-Work 'st.ready' }
+        return
+    }
 
-        $env2 = CF-CheckEnvironment
-        foreach ($i in $env2.Issues) { Add-LogLine ('[!] ' + $i) 'warn' }
+    try { if (Test-Path $prg) { Remove-Item $prg -Force } } catch { }
 
-        # 「插上完全没反应」专项：有问题才刷出来，没问题不占版面
-        $deep = CF-CheckDeep
-        foreach ($i in $deep.Issues) { Add-LogLine ('[重点] ' + $i) 'err' }
+    if (-not (Test-Path $tmp)) {
+        CF-Trace 'health: no result file'
+        Add-LogLine (T '体检没有产出结果，已跳过。功能不受影响。' 'The check produced no result - skipped. Functions are unaffected.') 'warn'
+        if ($own) { End-Work 'st.ready' }
+        return
+    }
+
+    Set-Work 96 (T 'ph.stat') ''
+    $rows = New-Object System.Collections.ArrayList
+    $hint = $null
+    $bad = ''
+    try {
+        foreach ($ln in [System.IO.File]::ReadAllLines($tmp, [System.Text.Encoding]::UTF8)) {
+            if ([string]::IsNullOrWhiteSpace($ln)) { continue }
+            $a = $ln -split "`t"
+            switch ($a[0]) {
+                'hint'   { $hint = [int]$a[1] }
+                'pool'   { [void]$rows.Add(@('info', (Fmt 'l.pool' @{a = $a[1]; b = $a[2]; c = $a[3] }))) }
+                'serial' { [void]$rows.Add(@('info', (Fmt 'l.serial' @{a = $a[1]; b = $a[2]; c = $a[3] }))) }
+                'dup'    { [void]$rows.Add(@('warn', (Fmt 'l.dup' @{a = $a[1] }))) }
+                'orphan' { [void]$rows.Add(@('warn', (Fmt 'l.orphan' @{a = $a[1] }))) }
+                'usbtot' { [void]$rows.Add(@('info', '')); [void]$rows.Add(@('info', (Fmt 'l.usbtot' @{a = $a[1]; b = $a[2] })))
+                           try { $script:OfflineEst = [int]$a[2] } catch { } }
+                'cat'    { [void]$rows.Add(@('info', (Fmt 'l.catrow' @{name = (CF-CatName $a[1]); a = $a[2]; b = $a[3]; c = $a[4] }))) }
+                'hot'    { [void]$rows.Add(@('warn', (Fmt 'l.hot' @{a = $a[1]; b = $a[2]; c = (CF-CatName $a[3]) }))) }
+                'issue'  { [void]$rows.Add(@('warn', ('[!] ' + $a[1]))) }
+                'deepissue' { [void]$rows.Add(@('err', ((T '[重点] ' '[key] ') + $a[1]))) }
+                'end'    { if ($a[1] -ne 'ok') { $bad = $a[1] } }
+            }
+        }
     } catch {
         Add-LogLine (Fmt 'l.errcheck' @{a = $_.Exception.Message }) 'err'
+        if ($own) { End-Work 'st.ready' }
+        return
     }
+
+    if ($null -ne $hint) { $script:HintOnline = $hint; Set-HintText }
+    foreach ($r in $rows) { Add-LogLine $r[1] $r[0] }
+    if ($bad -ne '') {
+        Add-LogLine (T ('体检中途出错（' + $bad + '），上面的统计可能不全。') ('The check hit an error (' + $bad + ') - the stats above may be incomplete.')) 'err'
+    }
+    try { Remove-Item $tmp -Force } catch { }
+    if ($own) { End-Work 'st.ready' }
 }
 
 # =====================================================================
 #  直接修复（菜单「工具 → 直接修复」）
 # =====================================================================
+# 预估总耗时（秒）。经验值：每条失效记录 pnputil 删一次约 0.28 秒，
+# 其余六步合计 12～18 秒。故意保守一点点（宁可先超后到，不要到了还在跑）。
+function Get-FixPlan {
+    $n = $script:OfflineEst
+    if ($n -lt 0) { return 25 }
+    $p = 14 + [int]($n * 0.28)
+    if ($p -lt 15) { $p = 15 }
+    if ($p -gt 240) { $p = 240 }
+    return $p
+}
+
 function Invoke-FixCore([int]$target, [string]$scope) {
     $sn = CF-ScopeName $scope (Get-IncludeHid)
-    Set-Busy $true
-    Set-Status (T 'st.fixing') 'run'
     Add-LogLine '' 'info'
     Add-LogLine (Fmt 'l.start' @{a = $sn; b = $target }) 'info'
+    Start-Work (T 'fx.bak') (Get-FixPlan)
     try {
         $r = CF-FullFix -KeepPort $target -Scope $scope -IncludeHid:(Get-IncludeHid)
+    CF-ResetDeviceCache
         Add-LogLine '' 'info'
         Add-LogLine (T 'l.done') 'info'
         if ($r.Blocks) {
@@ -1542,7 +1941,6 @@ function Invoke-FixCore([int]$target, [string]$scope) {
         }
         Set-Status (T 'st.fixdone') 'ok'
         $script:NeedReboot = $true
-        Set-HintText
 
         $rep = ''
         try { $rep = Save-DeskReport 'ok' } catch { }
@@ -1568,7 +1966,7 @@ function Invoke-FixCore([int]$target, [string]$scope) {
         else { Add-LogLine (T 'l.errfilebad') 'err' }
         Set-Status (T 'st.fixerr') 'err'
     }
-    Set-Busy $false
+    End-Work
 }
 
 $mFix.Add_Click({
@@ -1590,6 +1988,14 @@ $mFix.Add_Click({
     } else {
         $body += (T 'd.fix.safe') + "`n" + (T 'd.fix.safeA') + "`n" + (T 'd.fix.safeB')
     }
+    # 按下按钮之前先给个时间概念。现场最怕的就是「不知道要等多久」，
+    # 于是两三秒没反应就去点右上角的叉。
+    $plan = Get-FixPlan
+    if ($script:OfflineEst -ge 40) {
+        $body += "`n`n" + (Fmt 'prog.plan' @{a = $plan })
+    } elseif ($script:OfflineEst -ge 0) {
+        $body += "`n`n" + (Fmt 'prog.plan' @{a = $plan })
+    }
     $body += "`n`n" + (T 'd.fix.q')
 
     $ans = [System.Windows.Forms.MessageBox]::Show($body, (T 'd.fix.title'), 'YesNo', 'Question')
@@ -1600,8 +2006,6 @@ $mFix.Add_Click({
 
 # ---------- 只检查 ----------
 $btnCheck.Add_Click({
-    Set-Busy $true
-    Set-Status (T 'st.checking') 'run'
     Add-LogLine '' 'info'
     Add-LogLine (T 'l.checkhdr') 'info'
     try {
@@ -1720,6 +2124,11 @@ $btnWatch.Add_Click({
 
 # ---------- 关闭 ----------
 $form.Add_FormClosing({
+    # v3.5：体检子进程如果还活着，关窗口时一并收掉，别留孤儿进程。
+    if ($null -ne $script:HealthProc) {
+        try { if (-not $script:HealthProc.HasExited) { $script:HealthProc.Kill() } } catch { }
+        $script:HealthProc = $null
+    }
     if ($script:Watching) {
         $ans = [System.Windows.Forms.MessageBox]::Show((T 'd.exit.b'), (T 'd.exit.t'), 'YesNo', 'Question')
         if ($ans -ne 'Yes') { $_.Cancel = $true; return }
@@ -1732,6 +2141,8 @@ $form.Add_FormClosing({
 #  显示
 # =====================================================================
 Apply-Lang
+
+CF-Trace 'gui: form ready, waiting for Add_Shown'
 
 $form.Add_Shown({
     if ($Shot -ne '') { return }
@@ -1750,6 +2161,35 @@ if ($ShotDlg -ne '' -and $Shot -ne '') {
             'about' { Show-TextDialog (T 'hdr.about') (Get-AboutLines) }
         }
         $script:ShotDlgPath = ''
+        $form.Close()
+    })
+}
+elseif ($Shot -ne '' -and $ShotWork -gt 0) {
+    # 模拟长任务：走一遍真实的进度更新路径（Start-Work / Set-Work / Update-Work），
+    # 走到一半存图，再走完，确认 DomEvents 泵得动、窗口不假死。
+    $form.Add_Shown({
+        $t0 = Get-Date
+        Start-Work (T 'fx.dead') $ShotWork
+        $i = 0
+        $mid = $false
+        while (((Get-Date) - $t0).TotalSeconds -lt $ShotWork) {
+            $i++
+            $p = [int](96 * $i / ($ShotWork * 10))
+            if ($p -gt 96) { $p = 96 }
+            Set-Work $p (T 'fx.dead') ([string]$i + ' / 187')
+            Start-Sleep -Milliseconds 100
+            if (-not $mid -and ((Get-Date) - $t0).TotalSeconds -ge ($ShotWork / 2)) {
+                $mid = $true
+                $w = $form.Width
+                $h = $form.Height
+                $bmp = New-Object System.Drawing.Bitmap($w, $h)
+                $rect = New-Object System.Drawing.Rectangle(0, 0, $w, $h)
+                $form.DrawToBitmap($bmp, $rect)
+                $bmp.Save($Shot, [System.Drawing.Imaging.ImageFormat]::Png)
+                $bmp.Dispose()
+            }
+        }
+        End-Work
         $form.Close()
     })
 }

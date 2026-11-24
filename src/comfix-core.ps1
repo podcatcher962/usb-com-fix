@@ -16,16 +16,48 @@
 #  双语：CF-Log '中文' 'level' 'English'，CF-T '中文' 'English'
 #
 #  兼容 Windows 7/8/10/11，PowerShell 5.1，32 位 / 64 位
+#
+#  v3.5（2026-11-24）现场「窗口出来就死、等很久不恢复」：
+#    1) 删掉 Get-WmiObject 全量查询（无超时，故障机上会无限期挂住）
+#    2) 其余 WMI 调用全部加 -OperationTimeoutSec
+#    3) 新增 CF-Trace 时间戳日志，卡住时能定位到具体哪一步
+#    4) 新增安全模式（USB_FIX_SAFE=1）：跳过启动体检直接进界面
+#
+#  v3.4（2026-11-24）性能修复：
+#    现场反馈 32 位 Win10 低配机上「窗口出来了但鼠标点不动、像死机」。
+#    原因是启动体检在 UI 线程里同步跑，且设备列表被完整枚举了 4 遍、每次
+#    读注册表都走 PowerShell provider（Get-ItemProperty，比直读慢 5~100 倍）。
+#    本版改为：注册表直读 + 设备列表缓存 + WMI 侧过滤。功能、判定逻辑、
+#    安全铁律一行未改，只是把同样的活干得更快。
 # =====================================================================
 
 $script:CF_LOG    = New-Object System.Collections.ArrayList
 $script:CF_OnLog  = $null
+$script:CF_OnProgress = $null   # v3.6：GUI 会把它换成真正画进度的函数
 $script:CF_ARB    = 'HKLM:\SYSTEM\CurrentControlSet\Control\COM Name Arbiter'
 $script:CF_BACKUP = Join-Path $env:ProgramData 'ComFix\backup'
 $script:CF_PRESENT_CACHE = $null
+$script:CF_DEV_CACHE = $null
 $script:CF_ENUM_USB = 'HKLM:\SYSTEM\CurrentControlSet\Enum\USB'
 $script:CF_ENUM_FTD = 'HKLM:\SYSTEM\CurrentControlSet\Enum\FTDIBUS'
 $script:CF_LANG   = 'zh'
+
+# v3.5：启动/体检时间戳日志。现场再出现「窗口出来后不动」时，
+# 看 %ProgramData%\ComFix\startup.log 最后一行，就知道卡在哪一步。
+$script:CF_TRACE = Join-Path $env:ProgramData 'ComFix\startup.log'
+
+function CF-Trace([string]$msg) {
+    try {
+        $d = Split-Path $script:CF_TRACE -Parent
+        if (-not (Test-Path $d)) { [void](New-Item -ItemType Directory -Path $d -Force) }
+        if ((Test-Path $script:CF_TRACE) -and ((Get-Item $script:CF_TRACE).Length -gt 262144)) {
+            Move-Item $script:CF_TRACE ($script:CF_TRACE + '.old') -Force
+        }
+        $ts = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
+        $s = $ts + '  pid=' + $PID + '  x86=' + (-not [Environment]::Is64BitProcess) + '  ' + $msg + [Environment]::NewLine
+        [System.IO.File]::AppendAllText($script:CF_TRACE, $s, (New-Object System.Text.UTF8Encoding($false)))
+    } catch { }
+}
 
 # ---------- 语言 ----------
 function CF-SetLang([string]$l) {
@@ -38,6 +70,16 @@ function CF-T([string]$zh, [string]$en) {
 }
 
 # ---------- 基础 ----------
+# v3.6：进度上报。
+#   GUI 把回调挂到 $script:CF_OnProgress 上；healthprobe 子进程里没人挂，
+#   函数直接返回，一行多余的事都不做。
+#   为什么不用「每条都刷」：pnputil 本身要 0.2~0.3 秒，逐条刷不会有问题；
+#   但注册表操作是毫秒级，逐条刷会把时间全花在重绘上。所以下面按 1/50 取样。
+function CF-Progress([int]$pct, [string]$zh, [string]$en, [string]$dzh = '', [string]$den = '') {
+    if ($null -eq $script:CF_OnProgress) { return }
+    try { & $script:CF_OnProgress $pct $zh $en $dzh $den } catch { }
+}
+
 function CF-Log([string]$zh, [string]$level = 'info', [string]$en = '') {
     $msg = $zh
     if ($script:CF_LANG -eq 'en' -and $en -ne '') { $msg = $en }
@@ -45,6 +87,62 @@ function CF-Log([string]$zh, [string]$level = 'info', [string]$en = '') {
     $line = "[$t] $msg"
     [void]$script:CF_LOG.Add($line)
     if ($script:CF_OnLog) { & $script:CF_OnLog $line $level }
+}
+
+# =====================================================================
+#  pnputil 调用（v3.6）
+#
+#  为什么不用 & pnputil.exe：PowerShell 同步调用外部程序没有任何超时手段。
+#  几百条记录里只要有**一条**卡住（设备栈不回应、安全软件拦进程启动），
+#  整个循环就停在那儿，界面跟着假死 —— 又回到「只能强关」的老路上。
+#  这里改成 .NET Process + WaitForExit(ms)：超时就杀掉，接着下一条。
+#
+#  顺带解决 32 位系统的坑：WOW64 下 %SystemRoot%\System32 会被重定向到
+#  SysWOW64，而那里没有 pnputil.exe。找不到就退到 Sysnative。
+# =====================================================================
+$script:CF_PnputilExe = $null
+
+function CF-GetPnputil {
+    if ($script:CF_PnputilExe) { return $script:CF_PnputilExe }
+    $c1 = Join-Path $env:SystemRoot 'System32\pnputil.exe'
+    $c2 = Join-Path $env:SystemRoot 'Sysnative\pnputil.exe'
+    if (Test-Path -LiteralPath $c1) { $script:CF_PnputilExe = $c1 }
+    elseif (Test-Path -LiteralPath $c2) { $script:CF_PnputilExe = $c2 }
+    else { $script:CF_PnputilExe = 'pnputil.exe' }
+    CF-Trace ('pnputil = ' + $script:CF_PnputilExe)
+    return $script:CF_PnputilExe
+}
+
+# 返回 @{ Ok; Out; Timeout }
+function CF-RunPnputil([string]$Arguments, [int]$TimeoutMs = 8000) {
+    $r = @{ Ok = $false; Out = ''; Timeout = $false }
+    try {
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = (CF-GetPnputil)
+        $psi.Arguments = $Arguments
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        try { $psi.StandardOutputEncoding = [System.Text.Encoding]::Default } catch { }
+        try { $psi.StandardErrorEncoding = [System.Text.Encoding]::Default } catch { }
+        $p = [System.Diagnostics.Process]::Start($psi)
+        # 先挂异步读，避免输出塞满管道导致子进程阻塞
+        $t1 = $p.StandardOutput.ReadToEndAsync()
+        $t2 = $p.StandardError.ReadToEndAsync()
+        if (-not $p.WaitForExit($TimeoutMs)) {
+            try { $p.Kill() } catch { }
+            $r.Timeout = $true
+            $r.Out = 'timeout'
+            return $r
+        }
+        try { $r.Out = ([string]$t1.Result) + ([string]$t2.Result) } catch { }
+        $r.Ok = ($p.ExitCode -eq 0)
+        return $r
+    } catch {
+        $r.Out = "$_"
+        return $r
+    }
 }
 
 function CF-IsAdmin {
@@ -57,7 +155,43 @@ function CF-EnsureDir([string]$p) {
     if (-not (Test-Path $p)) { New-Item -ItemType Directory -Path $p -Force | Out-Null }
 }
 
+# v3.4：直接用 .NET 读注册表。
+# Get-ItemProperty 每次都要过一遍 PowerShell provider（参数绑定 + PSObject
+# 包装），本工具一次体检要调用上万次，32 位低配机上就是几十秒的卡顿。
+# 参数同时接受 HKLM:\... 和 PSPath（Microsoft.PowerShell.Core\Registry::...）。
+function CF-RegKey([string]$path) {
+    if ($null -eq $path -or $path -eq '') { return $null }
+    $p = [string]$path
+    $p = $p -replace '^Microsoft\.PowerShell\.Core\\Registry::', ''
+    $p = $p -replace '^Registry::', ''
+    if ($p -like 'HKLM:\*') { $p = 'HKEY_LOCAL_MACHINE\' + $p.Substring(6) }
+    elseif ($p -like 'HKCU:\*') { $p = 'HKEY_CURRENT_USER\' + $p.Substring(6) }
+    elseif ($p -like 'HKCR:\*') { $p = 'HKEY_CLASSES_ROOT\' + $p.Substring(6) }
+    try {
+        if ($p -like 'HKEY_LOCAL_MACHINE\*') {
+            $sub = $p.Substring(19)
+            if ($sub -eq '') { return $null }
+            return [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($sub)
+        }
+        if ($p -like 'HKEY_CURRENT_USER\*') {
+            $sub = $p.Substring(18)
+            if ($sub -eq '') { return $null }
+            return [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($sub)
+        }
+    } catch { return $null }
+    return $null
+}
+
 function CF-RegNum($path, $name, $default = $null) {
+    $k = $null
+    try {
+        $k = CF-RegKey $path
+        if ($null -ne $k) {
+            $v = $k.GetValue($name)
+            if ($null -eq $v) { return $default }
+            return $v
+        }
+    } catch { } finally { if ($null -ne $k) { try { $k.Close() } catch { } } }
     try {
         $v = (Get-ItemProperty $path -Name $name -ErrorAction Stop).$name
         if ($null -eq $v) { return $default }
@@ -66,11 +200,41 @@ function CF-RegNum($path, $name, $default = $null) {
 }
 
 function CF-RegStr($path, $name, $default = '') {
+    $k = $null
+    try {
+        $k = CF-RegKey $path
+        if ($null -ne $k) {
+            $v = $k.GetValue($name)
+            if ($null -eq $v) { return $default }
+            return [string]$v
+        }
+    } catch { } finally { if ($null -ne $k) { try { $k.Close() } catch { } } }
     try {
         $v = (Get-ItemProperty $path -Name $name -ErrorAction Stop).$name
         if ($null -eq $v) { return $default }
         return [string]$v
     } catch { return $default }
+}
+
+# v3.4：打开一次实例键，把要用的 6 个值一次读完。
+# 原来是 6 次 Get-ItemProperty，也就等于 6 次开键 + 6 次 provider 开销。
+function CF-ReadDevVals($pspath) {
+    $o = @{ PortName = ''; Service = ''; Class = ''; ClassGUID = ''; ConfigFlags = 0; DeviceDesc = '' }
+    $k = $null
+    try {
+        $k = CF-RegKey $pspath
+        if ($null -eq $k) { return $o }
+        $o.Service    = [string]$k.GetValue('Service', '')
+        $o.Class      = [string]$k.GetValue('Class', '')
+        $o.ClassGUID  = [string]$k.GetValue('ClassGUID', '')
+        $o.DeviceDesc = [string]$k.GetValue('DeviceDesc', '')
+        $cf = $k.GetValue('ConfigFlags')
+        if ($null -ne $cf) { try { $o.ConfigFlags = [int]$cf } catch { $o.ConfigFlags = 0 } }
+        $k.Close(); $k = $null
+        $k = CF-RegKey ($pspath + '\Device Parameters')
+        if ($null -ne $k) { $o.PortName = [string]$k.GetValue('PortName', '') }
+    } catch { } finally { if ($null -ne $k) { try { $k.Close() } catch { } } }
+    return $o
 }
 
 # ---------- ComDB 位图 ----------
@@ -123,18 +287,24 @@ function CF-GetPresentIds {
     $set = @{}
     $script:CF_PresentOk = $false
 
+    CF-Trace 'present: start Get-PnpDevice -PresentOnly'
     try {
         $devs = @(Get-PnpDevice -PresentOnly -ErrorAction Stop)
         if ($devs.Count -gt 0) {
             foreach ($d in $devs) { $set[$d.InstanceId.ToUpper()] = $true }
             $script:CF_PresentOk = $true
             $script:CF_PRESENT_CACHE = $set
+            CF-Trace ('present: Get-PnpDevice ok, ' + $devs.Count + ' devices')
             return $set
         }
-    } catch { }
+    } catch {
+        CF-Trace ('present: Get-PnpDevice FAILED - ' + $_.Exception.Message)
+    }
 
+    # v3.5：加 20 秒硬超时。原来没有超时参数，WMI 仓库异常时这里会一直挂着。
+    CF-Trace 'present: start Get-CimInstance Win32_PnPEntity'
     try {
-        $ents = @(Get-CimInstance Win32_PnPEntity -ErrorAction Stop)
+        $ents = @(Get-CimInstance Win32_PnPEntity -OperationTimeoutSec 20 -ErrorAction Stop)
         if ($ents.Count -gt 0) {
             foreach ($e in $ents) {
                 $id = [string]$e.PNPDeviceID
@@ -146,23 +316,25 @@ function CF-GetPresentIds {
         }
     } catch { }
 
-    try {
-        $ents2 = @(Get-WmiObject Win32_PnPEntity -ErrorAction Stop)
-        if ($ents2.Count -gt 0) {
-            foreach ($e in $ents2) {
-                $id = [string]$e.PNPDeviceID
-                if ($id) { $set[$id.ToUpper()] = $true }
-            }
-            $script:CF_PresentOk = $true
-            $script:CF_PRESENT_CACHE = $set
-            return $set
-        }
-    } catch { }
+    # v3.5：原第三条路 Get-WmiObject 已整段删除。
+    # 它没有超时参数，WMI 仓库异常时会无限期挂住 —— 现场「等很久还是宕机」
+    # 不会自己恢复，多半就是卡在类似调用上。CIM 已经拿到同一份数据，
+    # 留着它只会多一次可能挂死的全量查询。
+    CF-Trace 'present: CIM path exhausted, marking PresentOk=false'
 
+    CF-Trace 'present: all paths failed (PresentOk=false)'
+
+    # v3.4：三条路都失败时也把空结果缓存住。
+    # 否则上层每枚举一次设备，就要把 PnP / CIM / WMI 三条路重跑一遍。
+    $script:CF_PRESENT_CACHE = $set
     return $set
 }
 
 function CF-ResetPresentCache { $script:CF_PRESENT_CACHE = $null }
+
+# v3.4：设备列表缓存。修复流程里必须清掉，否则会拿修复前的在线状态
+# 去判「离线」，有把在线设备当残留删掉的风险。
+function CF-ResetDeviceCache { $script:CF_DEV_CACHE = $null }
 
 # ---------- 设备分类 ----------
 function CF-Classify([string]$svc, [string]$cls, [string]$guid) {
@@ -244,6 +416,14 @@ function CF-CatInScope([string]$cat, [string]$Scope, [bool]$IncludeHid) {
 
 # ---------- 通用 USB 设备枚举 ----------
 function CF-GetUsbDevices([string]$Scope = 'Serial') {
+    # v3.4：体检流程里设备列表会被要 4 次（健康检查 / 环境检查 / 深度检查 /
+    # 型号分组各一次）。这里缓存一份全量，后 3 次直接复用。
+    if ($null -ne $script:CF_DEV_CACHE) {
+        if ($Scope -eq 'Serial') {
+            return @($script:CF_DEV_CACHE | Where-Object { $_.Category -eq 'Serial' })
+        }
+        return $script:CF_DEV_CACHE
+    }
     $present = CF-GetPresentIds
     $res = New-Object System.Collections.ArrayList
     $roots = @(
@@ -263,18 +443,17 @@ function CF-GetUsbDevices([string]$Scope = 'Serial') {
 
             $insts = @(Get-ChildItem $g.PSPath -ErrorAction SilentlyContinue)
             foreach ($inst in $insts) {
-                $pn  = CF-RegStr (Join-Path $inst.PSPath 'Device Parameters') 'PortName' ''
-                $svc = CF-RegStr $inst.PSPath 'Service' ''
-                $cls = CF-RegStr $inst.PSPath 'Class' ''
-                $gd  = CF-RegStr $inst.PSPath 'ClassGUID' ''
-                $cfg = CF-RegNum $inst.PSPath 'ConfigFlags' 0
-                $desc = CF-RegStr $inst.PSPath 'DeviceDesc' ''
+                $dv   = CF-ReadDevVals $inst.PSPath
+                $pn   = $dv.PortName
+                $svc  = $dv.Service
+                $cls  = $dv.Class
+                $gd   = $dv.ClassGUID
+                $cfg  = $dv.ConfigFlags
+                $desc = $dv.DeviceDesc
                 if ($desc -match '^@') { $desc = ($desc -split ';')[-1] }
 
                 $cat = CF-Classify $svc $cls $gd
                 if (-not $isVidPid) { $cat = 'UsbCore' }
-
-                if ($Scope -eq 'Serial' -and $cat -ne 'Serial') { continue }
 
                 # 实例 ID 必须带上枚举根名（USB\ 或 FTDIBUS\），否则和
                 # Get-PnpDevice 的 InstanceId 对不上，会把在线设备全判成离线。
@@ -300,6 +479,10 @@ function CF-GetUsbDevices([string]$Scope = 'Serial') {
                 })
             }
         }
+    }
+    $script:CF_DEV_CACHE = $res
+    if ($Scope -eq 'Serial') {
+        return @($res | Where-Object { $_.Category -eq 'Serial' })
     }
     return $res
 }
@@ -354,7 +537,7 @@ function CF-GetUsbGroups {
 function CF-GetMotherboardPorts {
     $nums = New-Object System.Collections.ArrayList
     try {
-        $sp = @(Get-CimInstance Win32_SerialPort -ErrorAction Stop)
+        $sp = @(Get-CimInstance Win32_SerialPort -OperationTimeoutSec 10 -ErrorAction Stop)
         foreach ($p in $sp) {
             $did = [string]$p.DeviceID
             $pid2 = [string]$p.PNPDeviceID
@@ -425,7 +608,7 @@ function CF-CheckEnvironment {
 
     # 5) USB 主机控制器数量
     $hc = 0
-    try { $hc = @(Get-CimInstance Win32_USBController -ErrorAction Stop).Count } catch { }
+    try { $hc = @(Get-CimInstance Win32_USBController -OperationTimeoutSec 10 -ErrorAction Stop).Count } catch { }
     if ($hc -gt 0) { [void]$facts.Add((CF-T ('USB 主机控制器 ' + $hc + ' 个') ('USB host controllers: ' + $hc))) }
 
     return [pscustomobject]@{ Issues = $issues; Facts = $facts }
@@ -517,8 +700,10 @@ function CF-CheckDeep {
     # 4) 当前 USB 设备的错误状态（0 以外就是有问题）
     $errs = @()
     try {
-        $errs = @(Get-CimInstance Win32_PnPEntity -ErrorAction Stop |
-                  Where-Object { $_.ConfigManagerErrorCode -ne 0 -and $_.PNPDeviceID -like 'USB*' })
+        # v3.4：在 WMI 侧就过滤。全量 Win32_PnPEntity 在 32 位低配机上
+        # 要 5~30 秒，这是启动卡死的第二大原因。
+        $errs = @(Get-CimInstance Win32_PnPEntity -Filter "PNPDeviceID LIKE 'USB%'" -OperationTimeoutSec 15 -ErrorAction Stop |
+                  Where-Object { $_.ConfigManagerErrorCode -ne 0 })
     } catch { }
     if ($errs.Count -gt 0) {
         foreach ($e in ($errs | Select-Object -First 8)) {
@@ -1038,25 +1223,53 @@ function CF-Step_CleanDead {
     foreach ($k in $byCat.Keys) { $summary += ((CF-CatName $k) + ' ' + $byCat[$k]) }
     CF-Log ('发现离线残留 ' + $dead.Count + ' 条（' + ($summary -join (CF-T '，' ', ')) + '），开始清理') 'info' ('Found ' + $dead.Count + ' offline records (' + ($summary -join ', ') + '), cleaning...')
 
+    # v3.6：逐条报进度。这一步是最慢的（几百条 × 0.2~0.3 秒），
+    # 也是现场最容易以为死机的一段 —— 条数在走，人就不会去点右上角。
+    # 每 2 条刷一次：pnputil 一次就要两百多毫秒，重绘开销可以忽略，
+    # 但刷太密会让日志框的滚动条一直抖。
+    $np = $dead.Count
+    $ni = 0
+    $slowStreak = 0
+    CF-Progress 20 (CF-T '正在清理失效的设备记录' 'Removing stale device records') ('0 / ' + $np) ('0 / ' + $np)
+
     $ok = 0; $fail = 0
     foreach ($d in $dead) {
+        $ni++
+        if (($ni % 2) -eq 0 -or $ni -eq $np) {
+            $p = 20 + [int](46 * $ni / $np)
+            if ($p -gt 64) { $p = 64 }
+            CF-Progress $p (CF-T '正在清理失效的设备记录' 'Removing stale device records') ([string]$ni + ' / ' + [string]$np) ([string]$ni + ' / ' + [string]$np)
+        }
         if ($DryRun) {
             CF-Log ('[试运行] 将删除 ' + $d.InstanceId) 'info' ('[dry run] would delete ' + $d.InstanceId)
             $ok++
             continue
         }
-        $out = ''
-        try { $out = (& pnputil.exe /remove-device $d.InstanceId 2>&1 | Out-String) } catch { $out = "$_" }
-        if ($LASTEXITCODE -eq 0 -or $out -match '成功|Success|success') {
+        $q = '/remove-device "' + $d.InstanceId + '"'
+        $r1 = CF-RunPnputil $q 8000
+        if ($r1.Ok -or $r1.Out -match '成功|Success|success') {
             $ok++
+            $slowStreak = 0
         } else {
-            $out2 = ''
-            try { $out2 = (& pnputil.exe /remove-device $d.InstanceId /subtree 2>&1 | Out-String) } catch { $out2 = "$_" }
-            if ($LASTEXITCODE -eq 0 -or $out2 -match '成功|Success|success') {
+            $r2 = CF-RunPnputil ($q + ' /subtree') 8000
+            if ($r2.Ok -or $r2.Out -match '成功|Success|success') {
                 $ok++
+                $slowStreak = 0
             } else {
                 $fail++
-                CF-Log ('  删不掉：' + $d.InstanceId) 'warn' ('  cannot delete: ' + $d.InstanceId)
+                if ($r1.Timeout -or $r2.Timeout) {
+                    CF-Log ('  超时跳过：' + $d.InstanceId) 'warn' ('  timed out, skipped: ' + $d.InstanceId)
+                    $slowStreak++
+                    # 连续超时说明 pnputil 在这台机器上根本跑不动（被安全软件拦、
+                    # 或者设备栈彻底不响应）。再耗下去等于让人干等，直接收手。
+                    if ($slowStreak -ge 3) {
+                        CF-Log '连续 3 条删除都超时，判断 pnputil 在这台机器上无法调用，已停止清理；其余记录原样保留。' 'err' 'Three removals in a row timed out - pnputil appears to be unusable on this machine. Cleanup stopped; remaining records untouched.'
+                        break
+                    }
+                } else {
+                    $slowStreak = 0
+                    CF-Log ('  删不掉：' + $d.InstanceId) 'warn' ('  cannot delete: ' + $d.InstanceId)
+                }
             }
         }
     }
@@ -1084,8 +1297,16 @@ function CF-Step_ClearFailedFlags {
     }
 
     CF-Log ('发现异常标记 ' + $bad.Count + ' 条，开始清除') 'info' ('Found ' + $bad.Count + ' abnormal flags, clearing...')
+    $nf = $bad.Count
+    $fi = 0
     $ok = 0
     foreach ($x in $bad) {
+        $fi++
+        if (($fi % 8) -eq 0 -or $fi -eq $nf) {
+            $p = 66 + [int](8 * $fi / $nf)
+            if ($p -gt 74) { $p = 74 }
+            CF-Progress $p (CF-T '正在清除「安装失败」标记' 'Clearing failed-install flags') ([string]$fi + ' / ' + [string]$nf) ([string]$fi + ' / ' + [string]$nf)
+        }
         $new = [int]($x.CfgFlags -band (-bnot 0x60))
         if ($DryRun) {
             CF-Log ('[试运行] 将清标记 ' + $x.InstanceId) 'info' ('[dry run] would clear flags on ' + $x.InstanceId)
@@ -1146,15 +1367,12 @@ function CF-Step_Rescan([switch]$DryRun) {
         return @{Ok = $true }
     }
     $done = $false
-    try {
-        $o = (& pnputil.exe /scan-devices 2>&1 | Out-String)
-        if ($LASTEXITCODE -eq 0) { $done = $true }
-    } catch { }
+    # 重扫要枚举整棵设备树，慢机器上十几秒很正常，给 25 秒
+    $rs = CF-RunPnputil '/scan-devices' 25000
+    if ($rs.Ok) { $done = $true }
     if (-not $done) {
-        try {
-            $o = (& pnputil.exe /scan 2>&1 | Out-String)
-            if ($LASTEXITCODE -eq 0) { $done = $true }
-        } catch { }
+        $rs = CF-RunPnputil '/scan' 25000
+        if ($rs.Ok) { $done = $true }
     }
     if (-not $done) {
         try { $null = (& devcon.exe rescan 2>&1); $done = $true } catch { }
@@ -1165,6 +1383,7 @@ function CF-Step_Rescan([switch]$DryRun) {
         CF-Log '系统不支持自动重扫，重启后同样生效' 'warn' 'This system does not support an automatic rescan; a reboot has the same effect'
     }
     CF-ResetPresentCache
+    CF-ResetDeviceCache
     return @{Ok = $done }
 }
 
@@ -1272,6 +1491,7 @@ function CF-FullFix {
     $r = [ordered]@{}
     CF-Log ('修复范围：' + (CF-ScopeName $Scope ([bool]$IncludeHid))) 'info' ('Scope: ' + (CF-ScopeName $Scope ([bool]$IncludeHid)))
 
+    CF-Progress 0 (CF-T '正在给系统留底' 'Snapshotting the system')
     CF-Log '──── 第 1 步：留底 ────' 'info' '──── Step 1: snapshot ────'
     if ($DryRun) {
         CF-Log '[试运行] 跳过留底' 'info' '[dry run] snapshot skipped'
@@ -1281,6 +1501,7 @@ function CF-FullFix {
 
     # 这一步是「新设备认不出」的真正要害：装不上的原因多半在系统层，
     # 只清记录是修不掉的，必须连策略、权限、过滤驱动一起处理。
+    CF-Progress 5 (CF-T '正在修复系统层拦路项' 'Repairing system-level blockers')
     CF-Log '──── 第 2 步：自动修复系统层拦路项 ────' 'info' '──── Step 2: repair system-level blockers ────'
     $r.Blocks = CF-RepairBlocks -BackupDir ([string]$r.Backup) -DryRun:$DryRun
     foreach ($m in $r.Blocks.Manual) { CF-Log ('  ! ' + $m) 'warn' }
@@ -1293,21 +1514,28 @@ function CF-FullFix {
     }
 
     CF-ResetPresentCache
+    CF-ResetDeviceCache
+    CF-Progress 20 (CF-T '正在清理失效的设备记录' 'Removing stale device records')
     CF-Log '──── 第 3 步：清理离线残留设备 ────' 'info' '──── Step 3: clean offline devices ────'
     $r.Dead = CF-Step_CleanDead -Scope $Scope -IncludeHid:$IncludeHid -DryRun:$DryRun
 
+    CF-Progress 66 (CF-T '正在清除「安装失败」标记' 'Clearing failed-install flags')
     CF-Log '──── 第 4 步：清除「安装失败」标记 ────' 'info' '──── Step 4: clear failed-install flags ────'
     $r.Flags = CF-Step_ClearFailedFlags -Scope $Scope -IncludeHid:$IncludeHid -DryRun:$DryRun
 
+    CF-Progress 74 (CF-T '正在校正 COM 号池' 'Rebuilding the COM port pool')
     CF-Log '──── 第 5 步：重建 COM 号池 ────' 'info' '──── Step 5: rebuild COM port pool ────'
     $r.Arb = CF-Step_RebuildArbiter -DryRun:$DryRun -KeepPort $KeepPort
 
+    CF-Progress 84 (CF-T '正在重新扫描硬件' 'Rescanning hardware')
     CF-Log '──── 第 6 步：重新扫描硬件 ────' 'info' '──── Step 6: rescan hardware ────'
     $r.Rescan = CF-Step_Rescan -DryRun:$DryRun
 
+    CF-Progress 93 (CF-T '正在固定串口号' 'Pinning the COM port')
     CF-Log ('──── 第 7 步：把插着的串口设备固定到 COM' + $KeepPort + ' ────') 'info' ('──── Step 7: pin plugged-in serial devices to COM' + $KeepPort + ' ────')
     $r.Pin = CF-PinAllOnline -Target $KeepPort -DryRun:$DryRun
 
+    CF-Progress 100 (CF-T '全部完成' 'All done')
     CF-Log '──── 完成 ────' 'info' '──── Done ────'
     return $r
 }

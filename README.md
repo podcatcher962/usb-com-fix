@@ -9,19 +9,19 @@
 
 <p align="center">
   <a href="https://github.com/podcatcher962/usb-com-fix/releases/latest">
-    <img src="https://img.shields.io/badge/⬇_下载免安装包-Download_v3.0-3DC98A?style=for-the-badge" height="40" alt="Download">
+    <img src="https://img.shields.io/badge/⬇_下载免安装包-Download_v3.6-3DC98A?style=for-the-badge" height="40" alt="Download">
   </a>
 </p>
 
 <p align="center">
   <b>直链 / Direct link：</b><br>
-  <a href="https://github.com/podcatcher962/usb-com-fix/releases/download/v3.2.0/usb-com-fix-v3.2.0.zip">
-    https://github.com/podcatcher962/usb-com-fix/releases/download/v3.2.0/usb-com-fix-v3.2.0.zip
+  <a href="https://github.com/podcatcher962/usb-com-fix/releases/download/v3.6.0/USB串口一键修复.exe">
+    https://github.com/podcatcher962/usb-com-fix/releases/download/v3.6.0/USB串口一键修复.exe
   </a>
 </p>
 
 <p align="center">
-  <sub>解压 → 双击「请双击这个-USB串口一键修复.bat」→ UAC 点「是」→ 点「一键诊断修复」，取证和修复一次做完</sub>
+  <sub>下载 → 双击（只有一个文件，不用解压）→ UAC 点「是」→ 点「一键诊断修复」，取证和修复一次做完</sub>
 </p>
 
 <p align="center">
@@ -144,7 +144,7 @@ Windows 管串口号靠两张表：
 ## 使用方法
 
 ```
-1. 解压，双击「请双击这个-USB串口一键修复.bat」
+1. 双击 `USB串口一键修复.exe`（只有一个文件，不用解压；首次打开会有个几秒的准备画面）
 2. 弹权限 → 点「是」（需要管理员权限才能改设备记录）
 3. 把那台认不出的设备插上，保持插着（**必须先插，再点按钮**）
 4. 点「一键诊断修复」—— 先只读取证，判出可修的原因就直接接着修（不再弹第二遍确认）
@@ -247,6 +247,50 @@ Windows 管串口号靠两张表：
 
 ---
 
+## 版本记录
+
+### v3.6 · 2026-11-24
+
+两条现场反馈：**「窗口出来了，但等很久还是不动，只能强关」**，
+以及 **「压缩包里一堆文件，不知道该点哪个」**。
+
+- **发成单个 exe**：双击 → UAC 点「是」→ 界面。没有解压、没有 bat、没有该点哪个的问题。
+  脚本随 exe 一起带着，运行时释放到 `%LOCALAPPDATA%\USBComFix\bin\<版本>\`；
+  换版只换这一个 exe，旧版本残留自动清掉。
+- **进度摊开给人看**：进度条上方两行 —— 左「正在做什么 + 做到第几条」，
+  右「百分比 / 已用几秒 / 还要几秒」。顶部那条黄提示在忙碌时变蓝底，轮播几句人话。
+  点「一键诊断修复」的确认框里，也会先给出预估秒数。
+- **每条删除 8 秒上限**：某一条卡住就跳下一条，不会再让整个循环停在那儿；
+  连续 3 条超时判定 `pnputil` 在这台机器上跑不动，主动停手并说明。
+- **启动自动降级**：上次没正常完成，这次自动跳过启动体检，并在日志里写明。
+- **32 / 64 位同一个包**：32 位进程看不到真的 `System32\pnputil.exe`（会重定向到
+  `SysWOW64`，那里没有），自动改走 `Sysnative`。这个坑以前是「删除静默失败」的来源。
+
+**本版实测**（本机 181 条 USB 记录 / 175 条离线残留，Windows 11 64 位 + 32 位 PowerShell 各跑一遍）
+
+| 项目 | 结果 |
+|---|---|
+| 进度覆盖 | 试运行全程 49 次回调：0 → 5 → 20 → 逐条 21…63 → 66 → 74 → 84 → 93 → 100，无跳段、无回退 |
+| 长任务是否假死 | 45 秒模拟任务，每 2 秒探一次 `IsHungAppWindow`，**10 次全部 `False`**；`WM_NULL` 10 次全部有回应 |
+| 32 位进程取 pnputil | `System32\pnputil.exe` = 不存在，`Sysnative\pnputil.exe` = 存在，实际解析到 Sysnative 并调用成功 |
+| 启动耗时 | 带启动体检 6.3 秒；自动安全模式（跳过体检）5.7 秒 |
+| 单文件体积 | 8.3 MB（含全部脚本、图标、启动画面） |
+
+### v3.5 · 2026-11-24
+
+启动体检从主界面搬到独立进程，最多等 25 秒，超时就放弃并让界面照常可用；
+删掉一处会真的挂死的无超时系统查询；加启动日志 `C:\ProgramData\ComFix\startup.log`。
+
+### v3.4 · 2026-11-24
+
+注册表改直读、设备清单只读一遍、错误码只查 USB 设备。同一台机器启动体检 5.0 秒 → 2.7 秒。
+
+### v3.2 · 2026-10-23
+
+固定守护、深度取证报告、双语界面。
+
+---
+
 ## 兼容性
 
 | 项目 | 支持 |
@@ -255,7 +299,7 @@ Windows 管串口号靠两张表：
 | 架构 | 32 位 / 64 位 |
 | 运行库 | 只用系统自带 .NET Framework 与 PowerShell 5.1，**不需要装任何东西** |
 | 网络 | **完全不联网** |
-| 安装 | 免安装，解压即用 |
+| 安装 | 单文件免安装，双击即用；不装服务、不改系统设置（运行时会释放脚本到 `%LOCALAPPDATA%`） |
 
 小屏幕（1024×768 / 1280×1024）会自动按工作区等比缩小；实在太小会出滚动条，不会出现按钮点不到。
 
@@ -310,8 +354,14 @@ usb-com-fix/
 ├─ docs/
 │  ├─ screenshot-zh.png
 │  └─ screenshot-en.png
+├─ exe/
+│  ├─ launcher.py             单文件启动器（提权、释放脚本、安全模式降级）
+│  ├─ build_exe.py            调 PyInstaller 打成一个 exe
+│  ├─ make_art.py             生成图标与启动画面
+│  ├─ usbfix.ico
+│  └─ splash.png
 ├─ 使用说明（先看这个）.txt
-├─ build.py                   打包成可分发的目录 + zip（bat 由它生成）
+├─ build.py                   把 src/ 打包成可分发的目录（本地调试用）
 ├─ LICENSE
 └─ README.md
 ```
@@ -321,12 +371,16 @@ usb-com-fix/
 ## 自己打包
 
 ```bash
-python build.py
+python build.py        # 1) src/ -> 可分发的脚本目录（本地调试、想看脚本时用）
+python exe/build_exe.py  # 2) 脚本目录 -> 单个 exe（对外发布用这个）
 ```
 
-生成 `USB串口一键修复/` 与同名 `.zip`（`ROOT` 常量可改，想换个目录名就改它）。
-`build.py` 里负责把 `.ps1` 转成 **UTF-8 BOM + CRLF**、把 `.bat` 转成 **GBK**——
-PowerShell 5.1 和 cmd 对编码的要求不一样，这两步不能省。
+`build.py` 负责把 `.ps1` 转成 **UTF-8 BOM + CRLF**，并生成本地调试用的 bat 启动方式
+（PowerShell 5.1 和 cmd 对编码的要求不一样，这两步不能省）。
+
+`exe/build_exe.py` 调 PyInstaller 打成单文件 exe，**必须用 32 位 Python**：
+32 位 exe 在 32 位和 64 位 Windows 上都能跑，只发一个包，不用让人挑。
+启动器在 64 位系统上会走 `Sysnative` 拿 64 位的 PowerShell；32 位系统上直接用 `System32`。
 
 ---
 
