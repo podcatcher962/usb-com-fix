@@ -14,8 +14,8 @@
 
 <p align="center">
   <b>Direct link:</b><br>
-  <a href="https://github.com/podcatcher962/usb-com-fix/releases/download/v3.6.0/usb-com-fix-v3.6.0.exe">
-    https://github.com/podcatcher962/usb-com-fix/releases/download/v3.6.0/usb-com-fix-v3.6.0.exe
+  <a href="https://github.com/podcatcher962/usb-com-fix/releases/latest/download/usb-com-fix.exe">
+    https://github.com/podcatcher962/usb-com-fix/releases/latest/download/usb-com-fix.exe
   </a>
 </p>
 
