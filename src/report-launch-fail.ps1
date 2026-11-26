@@ -14,11 +14,6 @@ function Get-ReportDir {
 
     $cand = New-Object System.Collections.ArrayList
     if ($env:WB_REPORT_DIR) { [void]$cand.Add($env:WB_REPORT_DIR) }
-    if (Test-Path -LiteralPath 'E:\workbuddy') {
-        $tool = 'USB'
-        if ($base) { $tool = Split-Path -Leaf $base }
-        [void]$cand.Add((Join-Path 'E:\workbuddy\_out' $tool))
-    }
     if ($base) { [void]$cand.Add((Join-Path $base '报告')) }
     try { [void]$cand.Add([Environment]::GetFolderPath('Desktop')) } catch { }
     [void]$cand.Add($env:TEMP)

@@ -20,11 +20,6 @@ function Get-ReportDir {
 
     $cand = New-Object System.Collections.ArrayList
     if ($env:WB_REPORT_DIR) { [void]$cand.Add($env:WB_REPORT_DIR) }
-    if (Test-Path -LiteralPath 'E:\workbuddy') {
-        $tool = 'USB'
-        if ($base) { $tool = Split-Path -Leaf $base }
-        [void]$cand.Add((Join-Path 'E:\workbuddy\_out' $tool))
-    }
     if ($base) { [void]$cand.Add((Join-Path $base '报告')) }
     try { [void]$cand.Add([Environment]::GetFolderPath('Desktop')) } catch { }
     [void]$cand.Add($env:TEMP)
@@ -104,9 +99,22 @@ function CfgText([int]$f) {
     return ('0x' + ('{0:X2}' -f $f) + '（' + ($m -join '、') + '）')
 }
 
-# ---- 判断实例ID 是否「无序列号」（靠端口路径生成） ----
+# ---- 判断一条实例记录属于哪一类 ----
 # 有序列号：USB\VID_x&PID_y\<序列号字符串>
 # 无序列号：USB\VID_x&PID_y\5&2f4a1b3c&0&1   （首段为 5& / 6& / 7& / 8&）
+#
+# v3.7 修正：复合设备的子接口（组名带 &MI_00 / &MI_01）末段同样是 6&xxx&0&000N，
+#   但那个 6&xxx 是「父设备实例路径的哈希」—— 父设备带序列号时它也跟着唯一。
+#   原来一律算成「无序列号、同口共用一条」，于是把 8064 台成品的 16000 多条
+#   正常接口记录说成「空片共用的坏记录」，整段结论方向反了。
+function InstKind([string]$grp, [string]$inst) {
+    $parts = $inst.Split('\')
+    if ($parts.Count -lt 2) { return 'Serial' }
+    $last = $parts[$parts.Count - 1]
+    if ($last -notmatch '^[5-9]&') { return 'Serial' }
+    if ($grp -match '&MI_\d+') { return 'Iface' }
+    return 'NoSerial'
+}
 function NoSerial([string]$inst) {
     $parts = $inst.Split('\')
     if ($parts.Count -lt 2) { return $false }
@@ -133,6 +141,33 @@ try {
     W ('系统位数  ：' + $os.OSArchitecture + '      进程位数：' + $(if ([Environment]::Is64BitProcess) { '64 位' } else { '32 位' }))
     W ('安装时间  ：' + $os.InstallDate.ToString('yyyy-MM-dd HH:mm:ss') + '（距今 ' + [int]((Get-Date) - $os.InstallDate).TotalDays + ' 天）')
     W ('上次启动  ：' + $os.LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss'))
+    # v3.7：完全离线的机器时间经常是错的（CMOS 电池没电、没有对时服务器）。
+    # 判据用「系统文件的时间戳有没有跑到未来」——系统文件不可能被写到未来，
+    # 一旦出现就说明机器时钟被调慢了。这个判据不会被休眠 / 长任务干扰，不会误报。
+    try {
+        $now = Get-Date
+        $worst = $null
+        $worstF = ''
+        $cands = @(
+            (Join-Path $env:SystemRoot 'System32\ntoskrnl.exe'),
+            (Join-Path $env:SystemRoot 'System32\kernel32.dll'),
+            (Join-Path $env:SystemRoot 'INF\setupapi.dev.log')
+        )
+        foreach ($cf in $cands) {
+            if (-not (Test-Path $cf)) { continue }
+            $mt = (Get-Item $cf).LastWriteTime
+            if ($mt -gt $now.AddDays(1)) {
+                if ($null -eq $worst -or $mt -gt $worst) { $worst = $mt; $worstF = (Split-Path -Leaf $cf) }
+            }
+        }
+        if ($null -ne $worst) {
+            W ('时间校验  ：！' + $worstF + ' 的时间是 ' + $worst.ToString('yyyy-MM-dd HH:mm') + '，比当前系统时间还晚 ' + [int](($worst - $now).TotalDays) + ' 天')
+            W '            说明本机时钟被调慢了（离线机器常见，主板电池没电也会这样）。'
+            W '            下面所有时间戳只能看先后顺序，不能当真实日期。'
+        } else {
+            W '时间校验  ：系统文件时间都在当前时间之前，本机时钟没有明显偏差。'
+        }
+    } catch { }
 } catch { W '（系统信息读取失败）' }
 
 # 主板串口（用来区分「主板上真有串口」还是「全靠 USB 转串口」）
@@ -307,6 +342,7 @@ if (-not (Test-Path $logPath)) {
         }
         WL
         W '  常见错误码含义：'
+        W '    0xE0000228  本机没有匹配的驱动程序 —— INF 里没有认领这个硬件 ID 的条目'
         W '    0xE0000247  找不到匹配的驱动程序（最常见：新设备没驱动可装）'
         W '    0xE000024B  安装被策略或权限阻断'
         W '    0xE0000203  驱动文件损坏或无法复制'
@@ -382,6 +418,7 @@ WL
 $unknown  = New-Object System.Collections.ArrayList
 $errored  = New-Object System.Collections.ArrayList
 $presentUsb = New-Object System.Collections.ArrayList
+$nonUsbErr  = New-Object System.Collections.ArrayList
 
 $cimTotal = 0
 $cimOk = $false
@@ -400,8 +437,16 @@ try {
         if ($code -ne 0) {
             [void]$errored.Add($d)
             $cls = [string]$d.PNPClass
-            if ($cls -eq '' -or $cls -eq 'Unknown' -or $code -eq 28) {
-                [void]$unknown.Add($d)
+            # v3.7：只把「USB 总线上的设备」算作未知设备。原来没按总线过滤，
+            # 主板芯片组的 SM 总线控制器（错误码 28）会被当成本次要找的
+            # 「未知 USB 设备」，把结论引到完全相反的方向。
+            $onUsb = ($devId -like 'USB\*' -or $devId -like 'USBSTOR\*')
+            if ($onUsb) {
+                if ($cls -eq '' -or $cls -eq 'Unknown' -or $code -eq 28) {
+                    [void]$unknown.Add($d)
+                }
+            } else {
+                [void]$nonUsbErr.Add($d)
             }
         }
     }
@@ -458,6 +503,99 @@ if ($errored.Count -gt 0) {
     W '如果此时正插着那台认不出的新机器，说明系统连「新设备来过」都没记录 ——'
     W '问题在 USB 枚举之前，属于硬件/端口/线材层，软件修不了。'
 }
+WL
+if ($nonUsbErr.Count -gt 0) {
+    W ('【其它总线上的报错设备】' + $nonUsbErr.Count + ' 个（与 USB 无关，只作参照，别当证据）')
+    foreach ($e in @($nonUsbErr | Select-Object -First 8)) {
+        $c2 = 0
+        try { $c2 = [int]$e.ConfigManagerErrorCode } catch { $c2 = 0 }
+        $nm2 = [string]$e.Name
+        if ($nm2.Length -gt 44) { $nm2 = $nm2.Substring(0, 44) + '..' }
+        W ('  错误码 ' + ([string]$c2).PadRight(6) + $nm2)
+    }
+}
+
+# ============================================================
+Sep '五之二、USB 控制器与根集线器（「插什么都没反应」要看这里）'
+# ============================================================
+W '说明：如果现场是「插任何 USB 设备都没反应」，而不是某一台认不出，'
+W '      病根通常在根集线器 / 主机控制器这一层，不在单个设备的记录上。'
+W '      在设备管理器里「删掉所有 USB 设备再重扫」能恢复，就是这一层的证据 ——'
+W '      那个操作真正动到的是根集线器和控制器，重扫时系统把整棵 USB 树重建一遍。'
+WL
+
+$liveMap = @{}
+if ($cimOk) {
+    foreach ($d in @($all)) { $liveMap[([string]$d.PNPDeviceID).ToUpper()] = $d }
+}
+
+# --- 根集线器实例（ROOT_HUB20 / ROOT_HUB30）---
+# 正常一台机器 1~3 条。数量异常偏多 = 这棵树被反复重建过，端口状态可能有残留。
+$rhRows = New-Object System.Collections.ArrayList
+if (Test-Path $root) {
+    foreach ($g in @(Get-ChildItem $root -ErrorAction SilentlyContinue)) {
+        if ($g.PSChildName -notmatch '^ROOT_HUB') { continue }
+        foreach ($i in @(Get-ChildItem $g.PSPath -ErrorAction SilentlyContinue)) {
+            $iid = 'USB\' + $g.PSChildName + '\' + [string]$i.PSChildName
+            $cfg = RegGet $i.PSPath 'ConfigFlags'
+            $cf = 0
+            if ($null -ne $cfg) { try { $cf = [int]$cfg } catch { $cf = 0 } }
+            $st = '离线'
+            if ($liveMap.ContainsKey($iid.ToUpper())) {
+                $st = '在线'
+                $lc = 0
+                try { $lc = [int]$liveMap[$iid.ToUpper()].ConfigManagerErrorCode } catch { $lc = 0 }
+                if ($lc -ne 0) { $st = '报错' + $lc }
+            }
+            [void]$rhRows.Add(@{ Iid = $iid; Flags = $cf; St = $st })
+        }
+    }
+}
+$rhOff = @($rhRows | Where-Object { $_.St -ne '在线' }).Count
+$rhErr = @($rhRows | Where-Object { $_.St -like '报错*' }).Count
+$rhOn  = $rhRows.Count - $rhOff - $rhErr
+W ('根集线器实例：' + $rhRows.Count + ' 条（在线 ' + $rhOn + '，离线 ' + $rhOff + '，报错 ' + $rhErr + '）')
+foreach ($r in $rhRows) {
+    W ('  ' + $r.Iid.PadRight(46) + $r.St.PadRight(10) + ('ConfigFlags=' + (CfgText $r.Flags)))
+}
+# 根集线器是焊在主板上的，正常情况必须全部在线。
+# 离线的那几条 = 以前重建 USB 树时留下的空壳，条数越多说明反复出过事。
+if ($rhRows.Count -eq 0) {
+    W '  ！一条根集线器记录都没有 —— 严重异常，USB 树已经不在系统里。'
+} elseif ($rhOn -eq 0) {
+    W '  ！没有任何一条根集线器在线 —— 严重异常。'
+} elseif ($rhOff -ge 3) {
+    W '  ！离线根集线器有 ' + $rhOff + ' 条（正常应为 0）：这棵树被反复重建过，端口状态可能有残留。'
+} elseif ($rhOff -ge 1) {
+    W '  （' + $rhOff + ' 条离线根集线器记录，一般是历史残留，不影响使用）'
+} else {
+    W '  （全部在线，正常）'
+}
+WL
+
+# --- 主机控制器（PCI 上的 xHCI / EHCI / OHCI）---
+$ctrls = @()
+if ($cimOk) {
+    $ctrls = @($all | Where-Object {
+        ([string]$_.PNPDeviceID) -like 'PCI\*' -and
+        ([string]$_.Service) -match '^(USBXHCI|USBEHCI|USBOHCI|USBHUB3|usbhub|usbccgp)$'
+    })
+}
+W ('USB 主机控制器：' + $ctrls.Count + ' 个')
+foreach ($c in $ctrls) {
+    $cc = 0
+    try { $cc = [int]$c.ConfigManagerErrorCode } catch { $cc = 0 }
+    $cn2 = [string]$c.Name
+    if ($cn2.Length -gt 44) { $cn2 = $cn2.Substring(0, 44) + '..' }
+    W ('  ' + $cn2.PadRight(46) + ('错误码 ' + $cc))
+}
+if ($ctrls.Count -eq 0 -and $cimOk) {
+    W '  ！一个 USB 主机控制器都没读到 —— 要么读不到，要么控制器真的不在。'
+}
+WL
+W '判读：根集线器/控制器这一层出问题，清设备记录是修不好的，'
+W '      要「把控制器重启一遍」（本工具菜单：工具 → 重置 USB 控制器）。'
+WL
 
 # ============================================================
 Sep '六、Enum\USB 权限与「能不能新建记录」实测'
@@ -541,13 +679,67 @@ if ($filterHit -eq 0) {
 }
 
 # ============================================================
-Sep '八、设备记录构成：有序列号 vs 无序列号'
+Sep '七之二、USB 兼容性标志位（usbflags）'
 # ============================================================
-W '说明：这一步是本次问题的核心。'
-W '  有序列号的设备（烧过固件的成品）：每台一条独立记录，插上就复用，稳定。'
-W '  无序列号的设备（空片 / 未烧固件）：Windows 只能按「插在哪个 USB 口」'
-W '  生成记录，同一个口的所有空片共用一条记录。这条记录一旦坏了，'
-W '  所有空片一起认不出，而烧过固件的成品完全不受影响 —— 正是现场现象。'
+$ufKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\usbflags'
+W '说明：这个键存的是「某个 VID/PID/版本 的 USB 兼容性开关」。'
+W '      正常机器上条目很多（见过的每个设备一条），条目多本身不是问题。'
+W '      要看的是有没有条目被设了非零值 —— 那等于强行给这个型号加了'
+W '      「不按标准走」的行为，严重时会让整批设备一起认不出。'
+WL
+if (-not (Test-Path $ufKey)) {
+    W '（本机没有这个键，属正常）'
+} else {
+    $ufAll = @(Get-ChildItem $ufKey -ErrorAction SilentlyContinue)
+    W ('条目总数：' + $ufAll.Count)
+    $ufNZ = New-Object System.Collections.ArrayList
+    $ufNormal = 0
+    foreach ($k in $ufAll) {
+        try {
+            foreach ($vn in @($k.GetValueNames())) {
+                $vv = $k.GetValue($vn)
+                if ($null -eq $vv) { continue }
+                $num = 0
+                if ($vv -is [byte[]]) {
+                    for ($bi = 0; $bi -lt $vv.Length; $bi++) {
+                        $num = $num -bor ([int]$vv[$bi] -shl (8 * $bi))
+                    }
+                } else {
+                    try { $num = [int]$vv } catch { $num = 0 }
+                }
+                if ($num -ne 0) {
+                    # osvc / SkipContainerIdQuery 是 Windows 自己按系统版本和设备类型
+                    # 写进去的正常兼容设置，几乎每台机器都有一堆，不能当异常报。
+                    if ($vn -eq 'osvc' -or $vn -eq 'SkipContainerIdQuery') {
+                        $ufNormal++
+                    } else {
+                        [void]$ufNZ.Add($k.PSChildName + '  ' + $vn + ' = 0x' + ('{0:X}' -f $num))
+                    }
+                }
+            }
+        } catch { }
+    }
+    W ('系统自动写的兼容标记（osvc / SkipContainerIdQuery）：' + $ufNormal + ' 条 —— 属正常，不用管')
+    W ('其它非零标志：' + $ufNZ.Count)
+    if ($ufNZ.Count -gt 0) {
+        W '  （下面这些才是被人为或第三方工具改过的型号，最多列 20 条）'
+        foreach ($x in @($ufNZ | Select-Object -First 20)) { W ('    ' + $x) }
+        if ($ufNZ.Count -gt 20) { W ('    …… 另有 ' + ($ufNZ.Count - 20) + ' 条') }
+    } else {
+        W '  （全部为 0，这一项正常）'
+    }
+}
+WL
+
+# ============================================================
+Sep '八、设备记录构成：有序列号 / 复合接口 / 真无序列号'
+# ============================================================
+W '说明：记录分三种，混在一起数会把结论带偏。'
+W '  有序列号（烧过固件的成品）：每台一条独立记录，插上就复用，稳定。'
+W '  复合设备子接口（&MI_00 / &MI_01）：一台设备占好几条，跟着父设备走；'
+W '      父设备带序列号时它也是唯一的，并不是「同一个口共用」。'
+W '  真无序列号（空片 / 未烧固件）：Windows 只能按「插在哪个 USB 口」'
+W '      生成记录，同一个口的所有空片共用一条。这条坏了，所有空片一起认不出。'
 WL
 
 $groups = @()
@@ -559,16 +751,20 @@ WL
 
 $badGroups = New-Object System.Collections.ArrayList
 $rows = New-Object System.Collections.ArrayList
-$serTotal = 0; $noSerTotal = 0
+$serTotal = 0; $noSerTotal = 0; $ifaceTotal = 0
 
 foreach ($g in $groups) {
     $gName = $g.PSChildName
     $insts = @(Get-ChildItem $g.PSPath)
-    $gSer = 0; $gNo = 0
+    $gSer = 0; $gNo = 0; $gIf = 0
     $bad = @()
     foreach ($i in $insts) {
         $iid = $gName + '\' + [string]$i.PSChildName
-        if (NoSerial $iid) { $gNo++ } else { $gSer++ }
+        switch (InstKind $gName $iid) {
+            'Iface'    { $gIf++ }
+            'NoSerial' { $gNo++ }
+            default    { $gSer++ }
+        }
         $cfg = RegGet $i.PSPath 'ConfigFlags'
         $cf  = 0
         if ($null -ne $cfg) { try { $cf = [int]$cfg } catch { $cf = 0 } }
@@ -578,6 +774,7 @@ foreach ($g in $groups) {
     }
     $serTotal += $gSer
     $noSerTotal += $gNo
+    $ifaceTotal += $gIf
     if ($bad.Count -gt 0) {
         [void]$badGroups.Add(@{ G = $gName; N = $insts.Count; Bad = $bad })
     }
@@ -586,8 +783,9 @@ foreach ($g in $groups) {
     }
 }
 
-W ('有序列号的实例记录：' + $serTotal + ' 条')
-W ('无序列号的实例记录：' + $noSerTotal + ' 条（靠端口位置生成，所有空片共用）')
+W ('有序列号的实例记录  ：' + $serTotal + ' 条（每台一条，插上就复用）')
+W ('复合设备子接口记录  ：' + $ifaceTotal + ' 条（&MI_xx，跟着父设备走，不是空片共用）')
+W ('真无序列号记录      ：' + $noSerTotal + ' 条（按端口位置生成，同一个口共用一条）')
 WL
 
 W '记录较多的型号组（≥2 条，按条数排序，取前 20）：'
@@ -614,13 +812,13 @@ if ($badGroups.Count -gt 0) {
 
 # 空片类设备（无序列号 + 端口位置生成）的详细清单
 WL
-W '无序列号记录明细（最多 25 条）：'
+W '真无序列号记录明细（最多 25 条）：'
 W ('  ' + '型号'.PadRight(30) + '实例（末段=端口位置）'.PadRight(34) + 'PortName')
 $noSerShown = 0
 foreach ($g in $groups) {
     foreach ($i in @(Get-ChildItem $g.PSPath)) {
         $iid = $g.PSChildName + '\' + [string]$i.PSChildName
-        if (-not (NoSerial $iid)) { continue }
+        if ((InstKind $g.PSChildName $iid) -ne 'NoSerial') { continue }
         if ($noSerShown -ge 25) { break }
         $pn = RegGet ($i.PSPath + '\Device Parameters') 'PortName'
         $gp = $g.PSChildName
@@ -718,8 +916,29 @@ if ($badGroups.Count -gt 0) {
     [void]$concl.Add('  这些记录会让 Windows 误以为设备还没装好，反复装不上。')
 }
 if ($noSerTotal -gt 0) {
-    [void]$concl.Add('【结构】系统里有 ' + $noSerTotal + ' 条「无序列号」记录。')
-    [void]$concl.Add('  这类记录就是空片共用的那条，出问题会整批认不出。')
+    [void]$concl.Add('【结构】系统里有 ' + $noSerTotal + ' 条「真无序列号」记录。')
+    [void]$concl.Add('  这类才是空片按端口共用的一条，它坏了会让整批空片认不出。')
+}
+if ($ifaceTotal -gt 0) {
+    [void]$concl.Add('【结构】另有 ' + $ifaceTotal + ' 条复合设备子接口记录（&MI_xx）。')
+    [void]$concl.Add('  它们跟着父设备走，每台成品各有一组，属于正常历史记录，不是共用的坏记录。')
+}
+if ($rhOn -eq 0) {
+    [void]$concl.Add('【严重】没有任何一条根集线器在线，USB 树已经不在系统里。')
+    [void]$concl.Add('  这不是清记录能解决的：要用「工具 - 重置 USB 控制器」，或直接重启。')
+} elseif ($rhOff -ge 3) {
+    [void]$concl.Add('【重点】离线根集线器有 ' + $rhOff + ' 条（正常应为 0）。')
+    [void]$concl.Add('  「插什么都没反应」常常就是这一层：反复重建留下的端口状态。')
+    [void]$concl.Add('  现场手工「删所有 USB 设备再重扫」能好，原因就在这里 ——')
+    [void]$concl.Add('  要用「工具 - 重置 USB 控制器」，清设备记录治不了这一层。')
+}
+if ($null -ne $logLastWrite) {
+    $gapH = [math]::Round(((Get-Date) - $logLastWrite).TotalHours, 1)
+    if ($gapH -gt 24) {
+        [void]$concl.Add('【校验】驱动安装日志最后一次写入，距本次生成 ' + [math]::Round($gapH / 24, 1) + ' 天。')
+        [void]$concl.Add('  如果刚插过设备却没留下新记录，说明系统连「尝试安装」都没做 ——')
+        [void]$concl.Add('  那种情况下本报告「现在有没有反应」一节不能当证据，需插着设备重跑。')
+    }
 }
 if ($concl.Count -eq 0) {
     [void]$concl.Add('本次检查没有发现明确异常。')
@@ -740,6 +959,7 @@ if ($fails.Count -gt 0) { $reasons++ }
 if ($unknown.Count -gt 0) { $reasons++ }
 if ($filterHit -gt 0) { $reasons++ }
 if ($badGroups.Count -gt 0) { $reasons++ }
+if ($rhOn -eq 0 -or $rhOff -ge 3) { $reasons++ }
 if (-not $cimOk -or $cimTotal -eq 0) { $verdict = 'UNKNOWN' }
 elseif ($reasons -gt 0) { $verdict = 'FIXABLE' }
 else { $verdict = 'HARDWARE' }

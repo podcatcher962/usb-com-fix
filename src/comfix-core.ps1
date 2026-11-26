@@ -1678,3 +1678,87 @@ function CF-WriteReport([string]$path) {
     $enc = New-Object System.Text.UTF8Encoding($true)
     [System.IO.File]::WriteAllLines($path, $L, $enc)
 }
+
+# =====================================================================
+#  重置 USB 控制器（v3.7 新增）
+#
+#  治的是「插任何 USB 设备都没反应」这一类故障。病根在根集线器 / 主机控制器
+#  这一层，清设备记录根本碰不到它 —— 这也是为什么现场只能靠手工
+#  「卸载所有 USB 设备再扫描」或者干脆重装系统。
+#
+#  现场那个动作，本质是让系统把整棵 USB 树重建一遍。这里用
+#  pnputil /restart-device 做同样的事，不删任何设备记录，风险比手工卸载低；
+#  个别控制器不认 restart-device 时，退回「禁用再启用」。
+# =====================================================================
+function CF-GetUsbControllers {
+    $res = New-Object System.Collections.ArrayList
+    try {
+        $devs = @(Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue |
+                  Where-Object {
+                      ([string]$_.PNPDeviceID) -like 'PCI\*' -and
+                      ([string]$_.Service) -match '^(USBXHCI|USBEHCI|USBOHCI|USBHUB3|usbhub)$'
+                  })
+        foreach ($d in $devs) {
+            [void]$res.Add([pscustomobject]@{
+                InstanceId = [string]$d.PNPDeviceID
+                Name       = [string]$d.Name
+                Service    = [string]$d.Service
+            })
+        }
+    } catch { }
+    return @($res)
+}
+
+function CF-Step_ResetUsbTree {
+    param([switch]$DryRun)
+
+    $ctrls = @(CF-GetUsbControllers)
+    if ($ctrls.Count -eq 0) {
+        CF-Log '没有找到 USB 主机控制器，无法重置。' 'err' 'No USB host controller found - nothing to reset.'
+        return @{ Ok = 0; Fail = 0; Total = 0 }
+    }
+
+    CF-Log ('找到 ' + $ctrls.Count + ' 个 USB 主机控制器，逐个重启（过程中 USB 设备会短暂断开）') 'info' ('Found ' + $ctrls.Count + ' USB host controller(s), restarting one by one (USB devices drop briefly)')
+
+    $ok = 0; $fail = 0; $i = 0
+    foreach ($c in $ctrls) {
+        $i++
+        $p = 5 + [int](80 * ($i - 1) / $ctrls.Count)
+        CF-Progress $p (CF-T '正在重启 USB 控制器' 'Restarting USB controllers') ([string]$i + ' / ' + [string]$ctrls.Count) ([string]$i + ' / ' + [string]$ctrls.Count)
+
+        if ($DryRun) {
+            CF-Log ('[试运行] 将重启 ' + $c.Name) 'info' ('[dry run] would restart ' + $c.Name)
+            $ok++
+            continue
+        }
+
+        $done = $false
+        $r = CF-RunPnputil ('/restart-device "' + $c.InstanceId + '"') 25000
+        if ($r.Ok -or $r.Out -match '成功|Success|success') { $done = $true }
+
+        if (-not $done) {
+            try {
+                $null = Disable-PnpDevice -InstanceId $c.InstanceId -Confirm:$false -ErrorAction Stop
+                Start-Sleep -Milliseconds 1500
+                $null = Enable-PnpDevice -InstanceId $c.InstanceId -Confirm:$false -ErrorAction Stop
+                Start-Sleep -Milliseconds 500
+                $done = $true
+            } catch { }
+        }
+
+        if ($done) {
+            $ok++
+            CF-Log ('  已重启：' + $c.Name) 'info' ('  restarted: ' + $c.Name)
+        } else {
+            $fail++
+            CF-Log ('  重启失败：' + $c.Name) 'warn' ('  restart failed: ' + $c.Name)
+        }
+    }
+
+    CF-Progress 88 (CF-T '正在重新扫描硬件' 'Rescanning hardware') '' ''
+    if (-not $DryRun) { [void](CF-RunPnputil '/scan-devices' 30000) }
+    CF-Progress 100 (CF-T 'USB 控制器已重置' 'USB controllers reset') '' ''
+
+    CF-Log ('控制器重置完成：成功 ' + $ok + ' 个，失败 ' + $fail + ' 个') 'info' ('Reset done: ' + $ok + ' ok, ' + $fail + ' failed')
+    return @{ Ok = $ok; Fail = $fail; Total = $ctrls.Count }
+}

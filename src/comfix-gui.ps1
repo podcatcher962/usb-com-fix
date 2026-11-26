@@ -16,7 +16,9 @@ param(
     [string]$ShotDlg = '',
     # 自测专用：模拟一个 N 秒的长任务，在中途截图。用来验证进度条、计时、
     # 安慰句在生产现场那种「要等几十秒」的场景下到底长什么样。
-    [int]$ShotWork = 0
+    [int]$ShotWork = 0,
+    # 自测专用：打印菜单树后直接退出，用来验证菜单项有没有真的挂上去
+    [switch]$DumpMenu
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,7 +30,7 @@ $corePath = Join-Path $PSScriptRoot 'comfix-core.ps1'
 
 # ---------- 提权 ----------
 if (-not (CF-IsAdmin)) {
-    if ($Shot -ne '' -or $AutoFixTest -or $SelfTest) {
+    if ($Shot -ne '' -or $AutoFixTest -or $SelfTest -or $DumpMenu) {
         # 截图/测试模式不提权
     } else {
         try {
@@ -287,13 +289,22 @@ $script:TXT = @{
         'd.stopb'     = '正在处理中，请等这一步结束。'
         'hdr.help'    = '使用说明'
         'hdr.disc'    = '免责声明'
+        # ---------- v3.7 USB 控制器重置 ----------
+        'menu.reset'   = '重置 USB 控制器'
+        'reset.start'  = '开始重置 USB 控制器：把整棵 USB 树重启一遍'
+        'reset.done'   = '控制器重置完成：成功 {a} 个 / 共 {b} 个'
+        'reset.after'  = '请把设备插上试一次；如果还是认不出，重启电脑后再试。'
+        'st.resetdone' = '控制器已重置'
+        'd.reset.t'    = '重置 USB 控制器'
+        'd.reset.b'    = "这一步会把本机的 USB 主机控制器逐个重启一遍，相当于在设备管理器里「卸载所有 USB 设备，再扫描硬件改动」。`n`n什么时候用：插任何 USB 设备都没反应（不是某一台认不出）。这种情况清设备记录治不了，要重启控制器这一层。`n`n注意：如果键盘鼠标是 USB 的，执行中会断 3~10 秒，之后自动恢复；万一没恢复，重启电脑一定能恢复。`n`n现在执行吗？"
+        'd.reset.ok'   = '已重启 {a} 个控制器，失败 {b} 个。`n`n请把设备插上试一次。'
         'hdr.about'   = '关于'
         # ---------- v3.6 进度 ----------
         'st.working'  = '处理中…'
         'prog.used'   = '已用 {a} 秒'
-        'prog.eta'    = '还要约 {a} 秒'
+        'prog.eta'    = '还要约 {a}'
         'prog.etaunk' = '正在估算…'
-        'prog.plan'   = '预计 {a} 秒左右'
+        'prog.plan'   = '预计 {a}左右'
         'ph.read'     = '正在读取设备记录'
         'ph.stat'     = '正在分类统计'
         'ph.env'      = '正在检查系统设置'
@@ -460,13 +471,22 @@ $script:TXT = @{
         'd.stopb'     = 'An operation is in progress. Let it finish first.'
         'hdr.help'    = 'Instructions'
         'hdr.disc'    = 'Disclaimer'
+        # ---------- v3.7 reset USB controllers ----------
+        'menu.reset'   = 'Reset USB controllers'
+        'reset.start'  = 'Resetting USB controllers: rebuilding the whole USB tree'
+        'reset.done'   = 'Reset done: {a} of {b} controllers restarted'
+        'reset.after'  = 'Plug the device in and try again. If it still fails, reboot and retry.'
+        'st.resetdone' = 'Controllers reset'
+        'd.reset.t'    = 'Reset USB controllers'
+        'd.reset.b'    = "This restarts every USB host controller on this PC - the same effect as removing all USB devices in Device Manager and scanning for hardware changes.`n`nWhen to use: nothing happens no matter what USB device you plug in (not just one device failing). Cleaning device records cannot fix that layer; the controllers have to be restarted.`n`nNote: if your keyboard or mouse is USB, it will drop for 3-10 seconds and come back by itself. Even if it does not, a reboot always recovers.`n`nRun it now?"
+        'd.reset.ok'   = '{a} controller(s) restarted, {b} failed.`n`nNow plug the device in and try again.'
         'hdr.about'   = 'About'
         # ---------- v3.6 progress ----------
         'st.working'  = 'Working...'
         'prog.used'   = '{a}s elapsed'
-        'prog.eta'    = '~{a}s left'
+        'prog.eta'    = '~{a} left'
         'prog.etaunk' = 'estimating...'
-        'prog.plan'   = '~{a}s total'
+        'prog.plan'   = '~{a} total'
         'ph.read'     = 'Reading device records'
         'ph.stat'     = 'Grouping and counting'
         'ph.env'      = 'Checking system settings'
@@ -499,6 +519,17 @@ function T([string]$k) {
     $z = $script:TXT['zh']
     if ($z.ContainsKey($k)) { return $z[$k] }
     return $k
+}
+
+# v3.7：长任务的时间一律按分钟说。原来固定「{a} 秒」，
+# 上万条记录的机器上会出现「还要约 2400 秒」这种没人愿意换算的提示。
+function Format-Dur([int]$s) {
+    if ($s -ge 90) {
+        $m = [int][math]::Round($s / 60.0)
+        if ($m -lt 1) { $m = 1 }
+        return (T ([string]$m + ' 分钟') ([string]$m + ' min'))
+    }
+    return (T ([string]$s + ' 秒') ([string]$s + 's'))
 }
 
 # 带占位符的模板：Fmt 'l.pool' @{a=1;b=2;c=3}
@@ -655,6 +686,7 @@ $form.MainMenuStrip = $menu
 $mTools = New-Object System.Windows.Forms.ToolStripMenuItem
 $mFix   = New-Object System.Windows.Forms.ToolStripMenuItem
 $mProbe = New-Object System.Windows.Forms.ToolStripMenuItem
+$mReset = New-Object System.Windows.Forms.ToolStripMenuItem
 $mHelp  = New-Object System.Windows.Forms.ToolStripMenuItem
 $mDisc  = New-Object System.Windows.Forms.ToolStripMenuItem
 $mAbout = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -677,6 +709,7 @@ $mZh.Text = '中文'
 $mEn.Text = 'English'
 
 [void]$mTools.DropDownItems.Add($mFix)
+[void]$mTools.DropDownItems.Add($mReset)
 [void]$mTools.DropDownItems.Add($mProbe)
 
 [void]$menu.Items.Add($mTools)
@@ -1038,10 +1071,10 @@ function Update-Work {
         $left = $script:WPlan - $el
         # 预估时间已经用完但还没结束：明说「仍在继续」。
         # 这里如果继续倒计时到 1 秒再不动，比不说更让人想强关。
-        if ($left -gt 0) { $etaTxt = Fmt 'prog.eta' @{ a = $left } }
+        if ($left -gt 0) { $etaTxt = Fmt 'prog.eta' @{ a = (Format-Dur $left) } }
         else { $etaTxt = (T 'prog.over') }
     } elseif ($p -ge 4) {
-        $etaTxt = Fmt 'prog.eta' @{ a = [int]([Math]::Max(1, $el * (100 - $p) / $p)) }
+        $etaTxt = Fmt 'prog.eta' @{ a = (Format-Dur ([int]([Math]::Max(1, $el * (100 - $p) / $p)))) }
     } else {
         $etaTxt = (T 'prog.etaunk')
     }
@@ -1121,7 +1154,7 @@ $lbAdmin = New-Object System.Windows.Forms.Label
 $lbAdmin.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 8.5)
 $lbAdmin.Location = New-Object System.Drawing.Point(26, 552)
 $lbAdmin.Size = New-Object System.Drawing.Size(672, 20)
-if ((CF-IsAdmin) -or ($Shot -ne '') -or $SelfTest) {
+if ((CF-IsAdmin) -or ($Shot -ne '') -or $SelfTest -or $DumpMenu) {
     $lbAdmin.ForeColor = $C_GREEN
     $script:AdminOk = $true
 } else {
@@ -1167,6 +1200,7 @@ function Apply-Lang {
 
     $mTools.Text = T 'menu.tools'
     $mProbe.Text = T 'menu.probe'
+    $mReset.Text = T 'menu.reset'
     $mHelp.Text  = T 'menu.help'
     $mDisc.Text  = T 'menu.disc'
     $mAbout.Text = T 'menu.about'
@@ -1453,7 +1487,7 @@ function Get-AboutLines {
         return @(
             'USB / USB-Serial Port Fix',
             '',
-            'Version   : 3.5',
+            'Version   : 3.7',
             'Author    : Lanlan Eternal',
             'Platform  : Windows 7 / 8 / 10 / 11, 32-bit and 64-bit',
             'Engine    : PowerShell 5.1 + WinForms (no install, portable)',
@@ -1472,6 +1506,7 @@ function Get-AboutLines {
             '  - COM port pool inconsistencies (COM Name Arbiter bit map)',
             '  - failed-install / reinstall-pending flags',
             '  - hardware rescan',
+            '  - when nothing at all responds: reset the USB controllers (v3.7, separate menu item)',
             '  - pinning serial devices to a fixed port',
             '',
             'Safety design',
@@ -1491,7 +1526,7 @@ function Get-AboutLines {
     return @(
         'USB / 串口 一键修复',
         '',
-        '版本     : 3.5',
+        '版本     : 3.7',
         '作者     : 永远的兰兰',
         '适用系统 : Windows 7 / 8 / 10 / 11，32 位 / 64 位',
         '运行方式 : PowerShell 5.1 + WinForms，免安装、绿色便携',
@@ -1509,11 +1544,12 @@ function Get-AboutLines {
         '  · COM 号池不一致（COM Name Arbiter 位图）',
         '  · 「安装失败 / 待重装」的异常标记',
         '  · 硬件重新扫描',
+        '  · 插什么都没反应时，单独重置 USB 控制器（v3.7 新增，工具菜单里）',
         '  · 把串口设备固定到指定端口号',
         '',
         '安全设计',
         '  · 只删离线记录，插着的设备不动',
-        '  · 集线器 / 控制器永久保护',
+        '  · 清理时集线器 / 控制器一律不碰（重置是单独菜单项，要二次确认）',
         '  · 键鼠、声卡、摄像头、网卡、打印机、蓝牙一律不碰',
         '  · 删除前有三道独立自检',
         '  · 全程留底，一键还原',
@@ -1691,6 +1727,38 @@ function Invoke-Probe([switch]$AutoFix) {
     Invoke-FixCore -target $target -scope $scope
 }
 
+# ---------------------------------------------------------------------
+#  重置 USB 控制器（v3.7）
+#  治「插任何 USB 设备都没反应」：病根在根集线器 / 主机控制器这一层，
+#  清设备记录碰不到它。现场靠手工卸载所有 USB 设备再扫描，这里自动化。
+# ---------------------------------------------------------------------
+function Invoke-ResetUsb {
+    if ($script:Busy) {
+        [System.Windows.Forms.MessageBox]::Show((T 'd.stopb'), (T 'd.stop'), 'OK', 'Information') | Out-Null
+        return
+    }
+    $ans = [System.Windows.Forms.MessageBox]::Show((T 'd.reset.b'), (T 'd.reset.t'), 'YesNo', 'Warning')
+    if ($ans -ne 'Yes') { return }
+
+    Add-LogLine '' 'info'
+    Add-LogLine (T 'reset.start') 'info'
+    Set-Busy $true
+    Start-Work (T 'reset.start') 45
+    try {
+        $r = CF-Step_ResetUsbTree
+        Add-LogLine (Fmt 'reset.done' @{ a = $r.Ok; b = $r.Total }) 'ok'
+        Set-Status (T 'st.resetdone') 'ok'
+        [System.Windows.Forms.MessageBox]::Show((Fmt 'd.reset.ok' @{ a = $r.Ok; b = $r.Fail }), (T 'd.reset.t'), 'OK', 'Information') | Out-Null
+    } catch {
+        Add-LogLine (Fmt 'l.errfix' @{ a = $_.Exception.Message }) 'err'
+        Set-Status (T 'st.fixerr') 'err'
+    } finally {
+        End-Work
+        Add-LogLine (T 'reset.after') 'info'
+    }
+}
+
+$mReset.Add_Click({ Invoke-ResetUsb })
 $mProbe.Add_Click({ Invoke-Probe })
 $btnProbe.Add_Click({ Invoke-Probe })
 
@@ -1899,7 +1967,10 @@ function Get-FixPlan {
     if ($n -lt 0) { return 25 }
     $p = 14 + [int]($n * 0.28)
     if ($p -lt 15) { $p = 15 }
-    if ($p -gt 240) { $p = 240 }
+    # v3.7：原来封顶 240 秒。产线机器离线记录动辄上万条，按每条 0.28 秒
+    # 要 40 分钟以上；封顶后进度条 240 秒就冲到 97% 再也不动，现场只能强关。
+    # 那很可能就是「修了两次都没修完」的真实原因。
+    if ($p -gt 7200) { $p = 7200 }
     return $p
 }
 
@@ -1991,10 +2062,11 @@ $mFix.Add_Click({
     # 按下按钮之前先给个时间概念。现场最怕的就是「不知道要等多久」，
     # 于是两三秒没反应就去点右上角的叉。
     $plan = Get-FixPlan
+    $planTxt = Format-Dur $plan
     if ($script:OfflineEst -ge 40) {
-        $body += "`n`n" + (Fmt 'prog.plan' @{a = $plan })
+        $body += "`n`n" + (Fmt 'prog.plan' @{a = $planTxt })
     } elseif ($script:OfflineEst -ge 0) {
-        $body += "`n`n" + (Fmt 'prog.plan' @{a = $plan })
+        $body += "`n`n" + (Fmt 'prog.plan' @{a = $planTxt })
     }
     $body += "`n`n" + (T 'd.fix.q')
 
@@ -2249,5 +2321,25 @@ try {
         } catch { }
     })
 } catch { }
+
+if ($DumpMenu) {
+    $dl = New-Object System.Collections.ArrayList
+    [void]$dl.Add('--- MENU lang=' + $script:LANG + ' ---')
+    foreach ($it in $menu.Items) {
+        if ($it -is [System.Windows.Forms.ToolStripMenuItem]) {
+            [void]$dl.Add('[' + $it.Text + ']')
+            foreach ($sub in $it.DropDownItems) {
+                if ($sub -is [System.Windows.Forms.ToolStripMenuItem]) {
+                    [void]$dl.Add('    ' + $sub.Text + '   enabled=' + $sub.Enabled)
+                }
+            }
+        }
+    }
+    [void]$dl.Add('--- END ---')
+    $dp = Join-Path $env:TEMP ('usbfix-menu-' + $script:LANG + '.txt')
+    [System.IO.File]::WriteAllLines($dp, [string[]]$dl.ToArray(), (New-Object System.Text.UTF8Encoding($true)))
+    Write-Host ('MENUDUMP ' + $dp)
+    return
+}
 
 [void]$form.ShowDialog()

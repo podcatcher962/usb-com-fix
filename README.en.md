@@ -262,6 +262,37 @@ language**. The choice is remembered, and the first launch follows the system la
 
 ## Version history
 
+### v3.7 · 2026-11-26
+
+New failure mode reported in the field: **not one device failing, but every USB port
+going dead at once**. The operator's workaround is to remove every device under
+"Universal Serial Bus controllers" in Device Manager and rescan; that recovers it -
+except on one machine where only a full reinstall helped.
+
+The cause is not the device-record layer, it is the USB controller / root hub layer.
+Cleaning records cannot reach it.
+
+- **New: Tools -> Reset USB controllers.** Issues `restart-device` to every USB host
+  controller, which rebuilds the whole USB tree - the same effect as the manual
+  Device Manager routine. Falls back to disable/enable when a controller rejects
+  `restart-device`. A confirmation dialog warns that USB keyboard/mouse may drop for
+  a few seconds; a reboot always recovers even if it fails.
+- **Report gained two sections**: USB controller / root hub state (per-instance online
+  status and `ConfigFlags`; root hubs are on-board and must all be online), and
+  `usbflags` compatibility bits (only manually set values listed - `osvc` and
+  `SkipContainerIdQuery` are written by Windows and are normal).
+- **Three misleading checks fixed**: "unknown device" is now filtered to `USB\*` /
+  `USBSTOR\*` so an SMBus controller (error 28) is no longer reported as your USB
+  device; composite child interfaces (`&MI_xx`) are no longer counted as
+  "no-serial-number records shared per port"; error code `0xE0000228` added to the
+  dictionary.
+- **Clock check** at the top of the report, using "system file timestamp in the
+  future" as the signal - sleep/hibernate does not trigger a false positive.
+- **Estimate no longer capped at 240 s.** On line PCs with tens of thousands of
+  offline records, the bar used to stall at 97% after four minutes; anything above
+  90 s is now shown in minutes.
+- Removed hard-coded developer paths.
+
 ### v3.6 · 2026-11-24
 
 Two pieces of field feedback: **"the window appears but nothing happens for a long time, so we force-quit it"**,

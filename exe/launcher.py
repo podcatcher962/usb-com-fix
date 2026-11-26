@@ -25,7 +25,7 @@ import subprocess
 import hashlib
 
 APP_NAME = 'USB / 串口 一键修复'
-VER = '3.6.0'
+VER = '3.7.0'
 
 PS1_FILES = [
     'comfix-gui.ps1',
